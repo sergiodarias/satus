@@ -37,12 +37,16 @@
     const minutos = App.tiempos.sumar(App.tiempos.dePedido(p.id));
     const inc = App.incidencias.dePedido(p.id).filter(x => x.tipo === 'incidencia' && !x.resuelta).length;
     const retraso = App.pedidos.retrasado(p);
+    const prod = App.repo.get('productos', p.productoId);
+    const ficha = ui().fichaProducto(prod);
 
     let html = '<article class="pedido' + (abierto ? ' abierto' : '') + '" id="pedido-' + esc(p.id) + '">' +
       '<button type="button" class="pedido-cabecera" data-action="alternar-pedido" data-id="' + esc(p.id) + '" aria-expanded="' + abierto + '">' +
+      '<span class="pedido-arriba">' + ui().dibujo(prod) + '<span class="pedido-textos">' +
       '<span class="pedido-linea"><span class="pedido-cliente">' + esc(t.principal) + '</span>' +
       '<span class="pedido-fecha">' + (p.fechaEntrega ? 'Entrega ' + formatDateShort(p.fechaEntrega) : formatDate(p.fechaPedido)) + '</span></span>' +
       '<span class="pedido-producto"><span class="num">' + esc(t.codigo) + '</span>' + (t.cliente ? ' · ' + esc(t.producto) : '') + ' · ×' + p.cantidad + '</span>' +
+      (ficha ? '<span class="pedido-ficha">' + ficha + '</span>' : '') + '</span></span>' +
       ui().progreso(p) +
       '<span class="pedido-pie"><span class="pedido-etapa' + (est.terminado ? ' terminado' : '') + '">' + (est.terminado ? '✓ ' : '') + esc(est.actualNombre) + '</span>' +
       '<span class="fila-chips">' +

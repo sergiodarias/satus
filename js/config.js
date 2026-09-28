@@ -9,7 +9,9 @@
 
   App.config = {
     // Súbela en cada publicación (y el CACHE de sw.js). Se ve en Ajustes.
-    VERSION: '0.2.0 · 28/09/2026',
+    VERSION: '0.3.0 · 28/09/2026',
+
+    MARCA: { nombre: 'SATUS', lema: 'Materiales que crean momentos', instagram: 'satus_mobiliario' },
 
     // Claves de almacenamiento local (modo sin servidor).
     STORAGE_KEY: 'produccion.v2',

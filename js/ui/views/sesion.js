@@ -10,9 +10,12 @@
 
   App.views = App.views || {};
 
+  /** Placa de microcemento con el logotipo en bajorrelieve + lema. */
   function marca(texto) {
-    return '<div class="acceso-marca"><span class="marca-sello" aria-hidden="true"></span><h1 class="acceso-titulo">Control de producción</h1>' +
-      '<p class="acceso-texto">' + texto + '</p></div>';
+    const m = App.config.MARCA;
+    return '<div class="acceso-placa"><p class="relieve" aria-label="' + esc(m.nombre) + '">' + esc(m.nombre) + '</p>' +
+      '<p class="lema">' + esc(m.lema) + '</p></div>' +
+      '<div class="acceso-cabecera"><h1 class="acceso-titulo">Producción</h1><p class="acceso-texto">' + texto + '</p></div>';
   }
 
   /** Acceso con email y contraseña (datos compartidos en Supabase). */
@@ -68,7 +71,10 @@
           ? 'Subir una copia añade sus datos al servidor (también la de la versión anterior de la app). No borra nada.'
           : 'Importar acepta también la copia de la versión anterior de la app (clientes, productos y pedidos).') + '</p>';
     }
-    c += '<h3 class="subtitulo">Acerca de</h3><p class="ayuda">Versión <strong class="num" id="version-app">' + esc(App.config.VERSION) + '</strong></p>';
+    const m = App.config.MARCA;
+    c += '<h3 class="subtitulo">Acerca de</h3><p class="ayuda"><span class="logotipo logotipo-pequeno">' + esc(m.nombre) + '</span> · ' + esc(m.lema) + '<br>' +
+      '<a class="enlace" href="https://www.instagram.com/' + esc(m.instagram) + '/" target="_blank" rel="noopener">@' + esc(m.instagram) + '</a><br>' +
+      'Versión <strong class="num" id="version-app">' + esc(App.config.VERSION) + '</strong></p>';
     return { titulo: 'Ajustes', cuerpo: c };
   };
 })(window.App = window.App || {});

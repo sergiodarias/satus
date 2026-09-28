@@ -34,6 +34,37 @@
     ajustes: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.8 12h2.4M18.8 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/>'
   };
 
+  /* ------------------------- Dibujos técnicos de producto ------------------ */
+  // Dibujo de línea, como en las fichas del catálogo Satus. Se elige por el
+  // nombre del producto; si no encaja con ninguno, un módulo genérico.
+  const DIBUJOS = {
+    mesa: '<path d="M16 29c0-5 12-9 26-10l48-4c12-1 18 3 18 7 0 5-10 9-22 10l-50 5c-12 1-20-3-20-8z"/><path d="M16 29v3c0 5 8 8 20 7l50-5c12-1 22-5 22-10v-2"/><path d="M33 39v18c0 3.5 11 3.5 11 0V38"/><path d="M86 34v16c0 3.5 10 3.5 10 0V33"/>',
+    banco: '<path d="M12 35 86 24l20 4-74 11z"/><path d="M12 35v4l20 4 74-11v-4"/><path d="M19 40v16l8 2 6-1V42"/><path d="M89 31v15l8 2 6-1V30"/>',
+    taburete: '<ellipse cx="60" cy="20" rx="22" ry="7"/><path d="M38 20v32M82 20v32"/><path d="M38 52c0 9.5 44 9.5 44 0"/>',
+    lavabo: '<path d="M22 28h62v14H22z"/><path d="M22 28l12-6h62l-12 6M84 42l12-6V22"/><ellipse cx="60" cy="16" rx="13" ry="3.2"/><path d="M47 16c1 7 25 7 26 0"/><path d="M83 22V9h-8v3"/><path d="M16 6v50" stroke-dasharray="2 3"/>',
+    estante: '<path d="M18 30 80 22l22 4-62 8z"/><path d="M18 30v3l22 4 62-8v-3"/><path d="M12 8v50" stroke-dasharray="2 3"/>',
+    modulo: '<path d="M38 22 60 12l22 10-22 10z"/><path d="M38 22v26l22 10V32M82 22v26L60 58"/>'
+  };
+  function tipoDibujo(nombre) {
+    const n = String(nombre || '').toLowerCase();
+    if (/mesa|escritorio/.test(n)) return 'mesa';
+    if (/banco|banqueta/.test(n)) return 'banco';
+    if (/taburete|puf|pouf/.test(n)) return 'taburete';
+    if (/lavabo|baño|bano|encimera/.test(n)) return 'lavabo';
+    if (/estante|balda|repisa/.test(n)) return 'estante';
+    return 'modulo';
+  }
+  function dibujo(producto, clase) {
+    return '<svg class="dibujo ' + (clase || '') + '" viewBox="0 0 120 68" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">' +
+      DIBUJOS[tipoDibujo(producto && producto.nombre)] + '</svg>';
+  }
+  const REVESTIMIENTO = { microcemento: 'Microcemento', cal: 'Cal', otro: '' };
+  /** Línea de ficha de catálogo: «Microcemento · 200×90×75 cm». */
+  function fichaProducto(producto) {
+    if (!producto) return '';
+    return [REVESTIMIENTO[producto.material] || '', producto.dimensiones || ''].filter(Boolean).map(esc).join(' · ');
+  }
+
   function icono(nombre, clase) {
     return '<svg class="ico ' + (clase || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (ICONOS[nombre] || '') + '</svg>';
   }
@@ -165,7 +196,7 @@
   function hoja() { return hojaActual; }
 
   App.ui = Object.assign(App.ui || {}, {
-    icono, chip, vacio, kpi, avatar, progreso, segmentos, opciones, campo,
+    icono, dibujo, fichaProducto, chip, vacio, kpi, avatar, progreso, segmentos, opciones, campo,
     toast, confirmar, cerrarDialogo, abrirHoja, pintarHoja, cerrarHoja, hoja
   });
 })(window.App = window.App || {});

@@ -17,7 +17,7 @@
     return cs.map(c => {
       const ped = App.repo.where('pedidos', p => p.clienteId === c.id);
       const activos = ped.filter(p => !App.pedidos.estado(p).terminado).length;
-      return '<article class="ficha"><div class="ficha-cabecera ficha-estatica">' +
+      return '<article class="ficha ficha-cliente"><div class="ficha-cabecera ficha-estatica">' +
         '<span class="ficha-linea"><span class="ficha-titulo">' + esc(c.nombre) + '</span>' +
         (ped.length ? ui().chip(plural(ped.length, 'pedido', 'pedidos') + (activos ? ' · ' + activos + ' en curso' : '')) : '') + '</span>' +
         (c.contacto ? '<span class="ficha-sub">' + esc(c.contacto) + '</span>' : '') +

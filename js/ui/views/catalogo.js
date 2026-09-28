@@ -23,9 +23,11 @@
     const rev = (REVESTIMIENTOS.find(t => t[0] === p.material) || [])[1];
     let html = '<article class="ficha' + (abierto ? ' abierta' : '') + '" id="producto-' + esc(p.id) + '">' +
       '<button type="button" class="ficha-cabecera" data-action="alternar-producto" data-id="' + esc(p.id) + '" aria-expanded="' + abierto + '">' +
+      '<span class="ficha-producto">' + ui().dibujo(p, 'dibujo-grande') + '<span class="ficha-textos">' +
       '<span class="ficha-titulo">' + esc(p.nombre) + '</span>' +
-      '<span class="fila-chips">' + (tipo ? ui().chip(tipo) : '') + (rev ? ui().chip(rev) : '') + ui().chip(plural(ruta.length, 'etapa', 'etapas')) + '</span>' +
-      '<span class="ficha-sub">' + [esc(p.dimensiones), euros(p.precio)].filter(Boolean).join(' · ') + '</span></button>';
+      '<span class="ficha-sub">' + [rev, esc(p.dimensiones), euros(p.precio)].filter(Boolean).join(' · ') + '</span>' +
+      '<span class="fila-chips fila-chips-izq">' + (tipo ? ui().chip(tipo) : '') + ui().chip(plural(ruta.length, 'etapa', 'etapas')) + '</span>' +
+      '</span></span></button>';
     if (abierto) {
       html += '<div class="ficha-detalle"><h3 class="subtitulo">Ruta de proceso</h3><ol class="lista-ruta">' + ruta.map(s => '<li>' + esc(s) + '</li>').join('') + '</ol>';
       if (receta.length) {

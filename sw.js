@@ -4,7 +4,7 @@
    caché de respaldo sin conexión, y caché primero para las tipografías.
    SUBE EL NÚMERO DE CACHE EN CADA PUBLICACIÓN (y VERSION en js/config.js).
    ========================================================================== */
-const CACHE = 'produccion-v2';
+const CACHE = 'produccion-v3';
 
 const ARCHIVOS = [
   './', './index.html', './manifest.json', './css/styles.css',

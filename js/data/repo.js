@@ -174,7 +174,7 @@
 
     /** Copia completa para exportar. */
     exportar() {
-      return Object.assign({ exportado: App.util.nowISO(), app: 'Control de producción', versionApp: App.config.VERSION }, App.util.clone(db));
+      return Object.assign({ exportado: App.util.nowISO(), app: 'Satus · Producción', versionApp: App.config.VERSION }, App.util.clone(db));
     },
 
     normalizar

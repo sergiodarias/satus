@@ -1,5 +1,5 @@
 /* ==========================================================================
-   styles.css — Control de producción
+   styles.css — Satus · Producción
    --------------------------------------------------------------------------
    Mobile-first: la base es el iPhone. Las media queries amplían a tableta y
    escritorio. Todos los colores salen de los tokens de :root (tema claro)
@@ -12,29 +12,38 @@
    ========================================================================== */
 
 /* ------------------------------- Tokens ---------------------------------- */
+/* Identidad SATUS: blanco roto, arena, piedra y madera (tonos de microcemento).
+   Tipografía: Jost (logotipo y títulos, mayúsculas espaciadas) + Inter (texto). */
 :root {
-  /* Paleta: tonos de microcemento y cal */
-  --bg: #EDE7DA;
-  --surface: #F8F4EC;
-  --surface-2: #EFE8D9;
-  --ink: #2A2620;
-  --ink-soft: #6B6153;
-  --line: #DAD2C0;
-  --accent: #262117;          /* tinta: botones principales, progreso */
-  --accent-ink: #F8F4EC;      /* texto sobre --accent */
-  --accent-wash: #E4DCC7;
-  --rust: #8C4A30;            /* alerta, peligro */
-  --rust-wash: #F0E1D6;
-  --ochre: #8A5E12;           /* aviso */
-  --ochre-wash: #F2E6C8;
-  --olive: #4B6636;           /* correcto */
-  --olive-wash: #E2E8D3;
-  --live: #C0692A;            /* temporizador en marcha */
-  --live-wash: #F5E3D2;
-  --velo: rgba(30, 24, 16, .42);
-  --sombra: 0 10px 30px rgba(42, 38, 32, .16);
+  --bg: #F1EEE9;              /* blanco roto */
+  --surface: #FBFAF8;
+  --surface-2: #EAE5DD;
+  --ink: #2C2B29;             /* piedra oscura */
+  --ink-soft: #77716A;
+  --line: #DFD9CF;
+  --accent: #2F2E2B;          /* microcemento antracita: botones principales, progreso */
+  --accent-ink: #FBFAF8;
+  --accent-wash: #E7E1D7;
+  --arena: #D9C8B1;           /* arena: detalles de marca */
+  --arena-wash: #EFE6D9;
+  --madera: #9A6440;          /* madera: temporizador en marcha */
+  --rust: #9A4E36;            /* alerta, peligro */
+  --rust-wash: #F3E3DB;
+  --ochre: #86621E;           /* aviso */
+  --ochre-wash: #F1E8D2;
+  --olive: #52705A;           /* salvia: correcto */
+  --olive-wash: #E2EADF;
+  --live: var(--madera);
+  --live-wash: #F1E4D8;
+  --velo: rgba(35, 32, 28, .42);
+  --sombra: 0 12px 32px rgba(44, 43, 41, .14);
+  /* Grano de microcemento (ruido SVG). */
+  --grano: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .42  0 0 0 0 .38  0 0 0 .55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --grano-opacidad: .22;
+  --relieve-luz: rgba(255, 255, 255, .95);
+  --relieve-sombra: rgba(0, 0, 0, .30);
 
-  --font-display: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-display: 'Jost', 'Futura', 'Avenir Next', 'Century Gothic', -apple-system, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   --safe-t: env(safe-area-inset-top, 0px);
@@ -50,20 +59,24 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1B1915; --surface: #24211C; --surface-2: #2E2A23; --ink: #EDE6D8; --ink-soft: #A99E8C;
-    --line: #3C372E; --accent: #EDE6D8; --accent-ink: #1B1915; --accent-wash: #37322A;
-    --rust: #E39A7B; --rust-wash: #3C2720; --ochre: #DDAE55; --ochre-wash: #3A3120;
-    --olive: #A3C28A; --olive-wash: #28311F; --live: #F0A060; --live-wash: #3D2B1C;
-    --velo: rgba(0, 0, 0, .6); --sombra: 0 10px 30px rgba(0, 0, 0, .45);
+    --bg: #1A1917; --surface: #24221F; --surface-2: #2E2B27; --ink: #EEEAE3; --ink-soft: #A69F95;
+    --line: #3B3833; --accent: #EEEAE3; --accent-ink: #1A1917; --accent-wash: #36332E;
+    --arena: #8C7B64; --arena-wash: #332D25; --madera: #D79A6C;
+    --rust: #E59C80; --rust-wash: #3D2922; --ochre: #D9B060; --ochre-wash: #393121;
+    --olive: #9FC0A3; --olive-wash: #25302A; --live-wash: #3A2C21;
+    --velo: rgba(0, 0, 0, .6); --sombra: 0 12px 32px rgba(0, 0, 0, .45); --grano-opacidad: .12;
+    --relieve-luz: rgba(255, 255, 255, .10); --relieve-sombra: rgba(0, 0, 0, .7);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #1B1915; --surface: #24211C; --surface-2: #2E2A23; --ink: #EDE6D8; --ink-soft: #A99E8C;
-  --line: #3C372E; --accent: #EDE6D8; --accent-ink: #1B1915; --accent-wash: #37322A;
-  --rust: #E39A7B; --rust-wash: #3C2720; --ochre: #DDAE55; --ochre-wash: #3A3120;
-  --olive: #A3C28A; --olive-wash: #28311F; --live: #F0A060; --live-wash: #3D2B1C;
-  --velo: rgba(0, 0, 0, .6); --sombra: 0 10px 30px rgba(0, 0, 0, .45);
+  --bg: #1A1917; --surface: #24221F; --surface-2: #2E2B27; --ink: #EEEAE3; --ink-soft: #A69F95;
+  --line: #3B3833; --accent: #EEEAE3; --accent-ink: #1A1917; --accent-wash: #36332E;
+  --arena: #8C7B64; --arena-wash: #332D25; --madera: #D79A6C;
+  --rust: #E59C80; --rust-wash: #3D2922; --ochre: #D9B060; --ochre-wash: #393121;
+  --olive: #9FC0A3; --olive-wash: #25302A; --live-wash: #3A2C21;
+  --velo: rgba(0, 0, 0, .6); --sombra: 0 12px 32px rgba(0, 0, 0, .45); --grano-opacidad: .12;
+  --relieve-luz: rgba(255, 255, 255, .10); --relieve-sombra: rgba(0, 0, 0, .7);
   color-scheme: dark;
 }
 
@@ -82,6 +95,11 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
 }
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: var(--grano); opacity: var(--grano-opacidad);
+}
+#app { position: relative; z-index: 1; }
 body.con-hoja { overflow: hidden; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; touch-action: manipulation; }
@@ -108,17 +126,17 @@ h1, h2 { text-wrap: balance; }
   padding: 6px calc(16px + var(--safe-r)) 6px calc(16px + var(--safe-l));
   min-height: 56px;
 }
-.marca { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.marca-sello {
-  width: 26px; height: 26px; border-radius: 8px; flex: none;
-  background:
-    radial-gradient(circle at 30% 30%, rgba(255,255,255,.35) 0 2px, transparent 3px),
-    radial-gradient(circle at 70% 60%, rgba(0,0,0,.12) 0 1.5px, transparent 2.5px),
-    radial-gradient(circle at 45% 80%, rgba(255,255,255,.25) 0 1.5px, transparent 2.5px),
-    linear-gradient(145deg, #B9AE98, #8E8472);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+.marca { display: flex; align-items: baseline; gap: 12px; min-width: 0; text-decoration: none; color: inherit; }
+/* Logotipo SATUS: mayúsculas muy espaciadas, como en el catálogo y la tienda. */
+.logotipo {
+  font-family: var(--font-display); font-weight: 500; font-size: 17px;
+  letter-spacing: .32em; margin-right: -.32em; line-height: 1; white-space: nowrap;
 }
-.marca-nombre { font-family: var(--font-display); font-size: 18px; font-weight: 500; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.logotipo-pequeno { font-size: 13px; color: var(--ink); }
+.marca-sub {
+  font-size: 11.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-soft); white-space: nowrap; padding-left: 12px; border-left: 1px solid var(--line);
+}
 .usuario-chip {
   display: flex; align-items: center; gap: 10px;
   background: none; border: 0; padding: 4px; min-height: 44px; border-radius: 12px; text-align: right;
@@ -205,7 +223,7 @@ h1, h2 { text-wrap: balance; }
 .contenido > .seccion:first-child { margin-top: 4px; }
 .seccion-cabecera { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .seccion-cabecera .subtitulo { margin-bottom: 8px; }
-.seccion-titulo { font-family: var(--font-display); font-size: 18px; font-weight: 500; letter-spacing: -.005em; margin-bottom: 10px; }
+.seccion-titulo { font-family: var(--font-display); font-size: 19px; font-weight: 400; letter-spacing: .01em; margin-bottom: 10px; }
 .seccion-extra { font-size: 13px; color: var(--ink-soft); }
 .subtitulo { font-size: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); margin: 22px 0 8px; }
 .ayuda { font-size: 13.5px; color: var(--ink-soft); margin: 4px 0 12px; }
@@ -283,7 +301,7 @@ h1, h2 { text-wrap: balance; }
 /* -------------------------------- Panel ---------------------------------- */
 .kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 14px 12px; }
-.kpi-valor { font-family: var(--font-display); font-size: 27px; font-weight: 500; line-height: 1.05; }
+.kpi-valor { font-family: var(--font-display); font-size: 30px; font-weight: 300; line-height: 1.05; letter-spacing: .01em; }
 .kpi-etiqueta { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.3; }
 .kpi-aviso .kpi-valor { color: var(--ochre); }
 .kpi-alerta .kpi-valor { color: var(--rust); }
@@ -315,14 +333,20 @@ h1, h2 { text-wrap: balance; }
 
 /* ------------------------------- Pedidos --------------------------------- */
 .pedido { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 10px; overflow: hidden; scroll-margin-top: 80px; }
+.dibujo { flex: none; width: 72px; height: 41px; color: var(--ink); opacity: .78; }
+.dibujo-grande { width: 104px; height: 59px; }
+.pedido-arriba, .ficha-producto { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.pedido-textos, .ficha-textos { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pedido-ficha { font-size: 12.5px; color: var(--ink-soft); letter-spacing: .02em; }
+.fila-chips-izq { justify-content: flex-start; margin-top: 2px; }
 .pedido-cabecera {
   width: 100%; display: flex; flex-direction: column; gap: 8px;
   background: none; border: 0; padding: 14px 16px 13px; text-align: left;
 }
 .pedido-linea { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.pedido-cliente { font-family: var(--font-display); font-size: 17.5px; font-weight: 500; line-height: 1.25; }
+.pedido-cliente { font-family: var(--font-display); font-size: 18.5px; font-weight: 400; line-height: 1.25; letter-spacing: .01em; }
 .pedido-fecha { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
-.pedido-producto { font-size: 14px; color: var(--ink-soft); margin-top: -4px; }
+.pedido-producto { font-size: 14px; color: var(--ink-soft); }
 .progreso { display: flex; gap: 3px; margin-top: 2px; }
 .seg { flex: 1; height: 6px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--line); }
 .seg.hecho { background: var(--accent); box-shadow: none; }
@@ -385,13 +409,14 @@ button.etapa-marca:hover::before { box-shadow: 0 0 0 4px var(--accent-wash); }
   background: none; border: 0; padding: 14px 16px; text-align: left;
 }
 .ficha-linea { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.ficha-titulo { font-family: var(--font-display); font-size: 17px; font-weight: 500; line-height: 1.25; }
+.ficha-titulo { font-family: var(--font-display); font-size: 17px; font-weight: 400; line-height: 1.25; letter-spacing: .06em; text-transform: uppercase; }
+.ficha-cliente .ficha-titulo { text-transform: none; letter-spacing: .01em; font-size: 18px; }
 .ficha-sub { font-size: 13.5px; color: var(--ink-soft); }
 .ficha-nota { font-style: italic; }
 .ficha-detalle { border-top: 1px solid var(--line); padding: 4px 16px 16px; }
 .ficha-cabecera .pie-acciones { margin-top: 6px; }
 .stock { white-space: nowrap; }
-.stock-num { font-family: var(--font-display); font-size: 21px; font-weight: 500; }
+.stock-num { font-family: var(--font-display); font-size: 22px; font-weight: 300; }
 .stock-ud { font-size: 13px; color: var(--ink-soft); }
 .stock-bajo .stock-num { color: var(--rust); }
 .contacto { display: flex; flex-wrap: wrap; gap: 4px 14px; }
@@ -482,14 +507,14 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   content: ""; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px;
   border-radius: 2px; background: var(--line);
 }
-.hoja-titulo { font-family: var(--font-display); font-size: 20px; font-weight: 500; line-height: 1.25; }
+.hoja-titulo { font-family: var(--font-display); font-size: 21px; font-weight: 400; line-height: 1.25; letter-spacing: .01em; }
 .hoja-subtitulo { font-size: 13px; color: var(--ink-soft); margin-top: 3px; }
 .hoja-cuerpo {
   overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   padding: 16px calc(20px + var(--safe-r)) calc(28px + var(--safe-b)) calc(20px + var(--safe-l));
 }
 .perfil { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
-.perfil-nombre { font-family: var(--font-display); font-size: 20px; font-weight: 500; }
+.perfil-nombre { font-family: var(--font-display); font-size: 21px; font-weight: 400; }
 .perfil-rol { font-size: 13.5px; color: var(--ink-soft); }
 
 /* ------------------------ Diálogo de confirmación ------------------------ */
@@ -500,7 +525,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   background: var(--surface); border-radius: 18px; box-shadow: var(--sombra);
   padding: 20px; animation: aparecer .16s ease-out;
 }
-.dialogo-titulo { font-family: var(--font-display); font-size: 19px; font-weight: 500; }
+.dialogo-titulo { font-family: var(--font-display); font-size: 20px; font-weight: 400; }
 .dialogo-texto { font-size: 14.5px; color: var(--ink-soft); margin-top: 8px; }
 .dialogo-acciones { display: flex; gap: 10px; margin-top: 18px; }
 .dialogo-acciones .btn { flex: 1; white-space: normal; line-height: 1.2; }
@@ -519,11 +544,33 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 body.con-hoja .toast { bottom: auto; top: calc(var(--safe-t) + 14px); }
 
 /* -------------------------------- Acceso --------------------------------- */
-.acceso { max-width: 440px; margin: 0 auto; padding: calc(40px + var(--safe-t)) 16px calc(32px + var(--safe-b)); }
-.acceso-marca { display: grid; justify-items: start; gap: 10px; margin-bottom: 26px; }
-.acceso-marca .marca-sello { width: 40px; height: 40px; border-radius: 12px; }
-.acceso-titulo { font-family: var(--font-display); font-size: 32px; font-weight: 500; letter-spacing: -.015em; line-height: 1.1; }
-.acceso-texto { font-size: 16px; color: var(--ink-soft); }
+.acceso { max-width: 460px; margin: 0 auto; padding: 0 16px calc(32px + var(--safe-b)); }
+/* Placa de microcemento con el logotipo en bajorrelieve, como la pieza de la tienda. */
+.acceso-placa {
+  position: relative; overflow: hidden; text-align: center;
+  margin: 0 -16px 28px; padding: calc(64px + var(--safe-t)) 16px 44px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.acceso-placa::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: var(--grano); opacity: calc(var(--grano-opacidad) * 2.4);
+}
+.acceso-placa::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(158deg, transparent 62%, rgba(0, 0, 0, .07) 62.2%, rgba(0, 0, 0, .03));
+}
+.relieve {
+  position: relative; z-index: 1; margin: 0;
+  font-family: var(--font-display); font-weight: 300; line-height: 1;
+  font-size: clamp(46px, 15vw, 74px); letter-spacing: .28em; margin-right: -.28em;
+  color: var(--surface-2);
+  text-shadow: -1px -1px 1px var(--relieve-sombra), 1px 1px 1px var(--relieve-luz);
+}
+.lema { position: relative; z-index: 1; margin-top: 16px; font-size: 14px; color: var(--ink-soft); letter-spacing: .02em; }
+.acceso-cabecera { display: grid; gap: 6px; margin-bottom: 22px; }
+.acceso-titulo { font-family: var(--font-display); font-size: 13px; font-weight: 500; letter-spacing: .24em; text-transform: uppercase; color: var(--ink-soft); }
+.acceso-texto { font-size: 17px; color: var(--ink); }
 .acceso-grupo { margin-bottom: 22px; }
 .acceso-grupo-titulo { font-size: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); }
 .acceso-grupo-texto { font-size: 13.5px; color: var(--ink-soft); margin: 2px 0 10px; }
@@ -549,7 +596,7 @@ body.con-hoja .toast { bottom: auto; top: calc(var(--safe-t) + 14px); }
 /* ------------------------------ Pantallas -------------------------------- */
 @media (max-width: 359px) {
   .fila-campos:not(.fila-campos-3) { grid-template-columns: 1fr; }
-  .marca-nombre { font-size: 16px; }
+  .marca-sub { display: none; }
 }
 
 @media (min-width: 520px) {
@@ -564,6 +611,8 @@ body.con-hoja .toast { bottom: auto; top: calc(var(--safe-t) + 14px); }
 }
 
 @media (min-width: 700px) {
+  .acceso { padding-top: 32px; }
+  .acceso-placa { margin: 0 0 28px; border: 1px solid var(--line); border-radius: 20px; padding-top: 60px; }
   .hoja {
     left: 50%; right: auto; bottom: auto; top: 50%;
     transform: translate(-50%, -50%);

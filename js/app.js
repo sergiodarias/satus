@@ -66,7 +66,7 @@
 
     app.innerHTML =
       '<header class="cabecera"><div class="cabecera-interior">' +
-      '<div class="marca"><span class="marca-sello" aria-hidden="true"></span><span class="marca-nombre">Control de producción</span></div>' +
+      '<div class="marca"><span class="logotipo" aria-label="' + esc(App.config.MARCA.nombre) + '">' + esc(App.config.MARCA.nombre) + '</span><span class="marca-sub">Producción</span></div>' +
       '<button type="button" class="usuario-chip" data-action="ajustes" aria-label="Ajustes y usuario">' + ui.avatar(u) +
       '<span class="usuario-textos"><span class="usuario-nombre">' + esc(u.nombre) + '</span><span class="usuario-rol">' + esc(App.auth.rolEtiqueta(u)) + '</span></span></button>' +
       '</div>' + bannerTemporizador(u) + '</header>' +
