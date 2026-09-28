@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Control de producción</title>
+<meta name="description" content="Seguimiento de pedidos, tiempos e incidencias del taller.">
+<meta name="theme-color" content="#EDE7DA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1B1915" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Producción">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- La interfaz se dibuja desde js/app.js -->
+  <div id="app"><p class="cargando">Cargando datos del taller…</p></div>
+
+  <!-- Capas flotantes: hoja de formulario, diálogo de confirmación y avisos -->
+  <div id="sheet-root"></div>
+  <div id="dialog-root"></div>
+  <div id="toast-root" aria-live="polite"></div>
+
+  <noscript>Esta aplicación necesita JavaScript activado.</noscript>
+
+  <!--
+    Orden de carga = orden de dependencias:
+    configuración → utilidades → datos → sesión → negocio → interfaz → arranque
+  -->
+  <!-- Conexión con Supabase (datos compartidos). Versión fijada: cambiarla solo a propósito. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/data/local-adapter.js"></script>
+  <script src="js/data/supabase-adapter.js"></script>
+  <script src="js/data/repo.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/domain/catalogo.js"></script>
+  <script src="js/domain/pedidos.js"></script>
+  <script src="js/domain/tiempos.js"></script>
+  <script src="js/domain/incidencias.js"></script>
+  <script src="js/demo.js"></script>
+  <script src="js/ui/components.js"></script>
+  <script src="js/ui/views/panel.js"></script>
+  <script src="js/ui/views/pedidos.js"></script>
+  <script src="js/ui/views/incidencias.js"></script>
+  <script src="js/ui/views/catalogo.js"></script>
+  <script src="js/ui/views/clientes.js"></script>
+  <script src="js/ui/views/sesion.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
