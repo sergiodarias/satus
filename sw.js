@@ -4,14 +4,14 @@
    caché de respaldo sin conexión, y caché primero para las tipografías.
    SUBE EL NÚMERO DE CACHE EN CADA PUBLICACIÓN (y VERSION en js/config.js).
    ========================================================================== */
-const CACHE = 'produccion-v3';
+const CACHE = 'produccion-v4';
 
 const ARCHIVOS = [
   './', './index.html', './manifest.json', './css/styles.css',
   './js/config.js', './js/util.js',
   './js/data/local-adapter.js', './js/data/supabase-adapter.js', './js/data/repo.js',
   './js/auth.js',
-  './js/domain/catalogo.js', './js/domain/pedidos.js', './js/domain/tiempos.js', './js/domain/incidencias.js',
+  './js/domain/catalogo.js', './js/domain/pedidos.js', './js/domain/tiempos.js', './js/domain/consumos.js', './js/domain/incidencias.js',
   './js/demo.js',
   './js/ui/components.js',
   './js/ui/views/panel.js', './js/ui/views/pedidos.js', './js/ui/views/incidencias.js',

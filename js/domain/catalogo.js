@@ -1,5 +1,5 @@
 /* ==========================================================================
-   domain/catalogo.js — Clientes, productos fabricados, materiales y stock
+   domain/catalogo.js — Clientes, productos fabricados y materiales
    --------------------------------------------------------------------------
    Reglas de negocio puras: validan, comprueban permisos y escriben a través
    de App.repo. No saben nada del DOM.
@@ -7,15 +7,13 @@
    Productos y materiales comparten colección (`productos`) y se distinguen
    por `categoria`: 'fabricado' | 'material'.
 
-   Stock:
-   - stock real       → material.stock (cambia con ajustes y despachos).
-   - reservado        → suma del consumo de pedidos aún no despachados.
-   - disponible       → stock real − reservado.
+   El stock y el inventario se llevan en otra aplicación. Aquí solo se
+   apunta lo que se gasta (ver domain/consumos.js).
    ========================================================================== */
 (function (App) {
   'use strict';
 
-  const { DomainError, parseNum, todayISO } = App.util;
+  const { DomainError, parseNum } = App.util;
   const repo = () => App.repo;
   const auth = () => App.auth;
 
@@ -33,27 +31,6 @@
   function rutaDe(producto) {
     return (producto && Array.isArray(producto.ruta) && producto.ruta.length) ? producto.ruta : App.config.DEFAULT_ROUTE;
   }
-
-  function reservasDeMaterial(materialId) {
-    const out = [];
-    repo().all('pedidos').forEach(p => {
-      if (p.materialesDespachados) return;
-      (p.consumo || []).forEach(c => { if (c.materialId === materialId) out.push({ pedido: p, cantidad: c.cantidad }); });
-    });
-    return out;
-  }
-  function materialReservado(materialId) {
-    return reservasDeMaterial(materialId).reduce((s, r) => s + (Number(r.cantidad) || 0), 0);
-  }
-  function materialDisponible(material) {
-    return (parseFloat(material.stock) || 0) - materialReservado(material.id);
-  }
-  function tieneStockBajo(material) {
-    const disp = materialDisponible(material);
-    const min = material.stockMinimo;
-    return disp < 0 || (min !== null && min !== undefined && min !== '' && disp < parseFloat(min));
-  }
-  function materialesBajos() { return materiales().filter(tieneStockBajo); }
 
   function movimientosDe(materialId) {
     return repo().where('movimientos', m => m.materialId === materialId)
@@ -89,14 +66,11 @@
     if (!nombre) throw new DomainError('El nombre del producto es obligatorio.');
     const ruta = (datos.ruta || []).map(s => String(s).trim()).filter(Boolean);
     if (!ruta.length) throw new DomainError('Añade al menos una etapa a la ruta de proceso.');
-    const receta = (datos.receta || [])
-      .map(r => ({ materialId: r.materialId, cantidad: parseNum(r.cantidad) }))
-      .filter(r => r.materialId && r.cantidad > 0);
     const precio = parseNum(datos.precio);
     const limpio = {
       categoria: 'fabricado', nombre, tipo: datos.tipo || '', material: datos.material || '',
       dimensiones: (datos.dimensiones || '').trim(), precio: isNaN(precio) ? null : precio,
-      notas: (datos.notas || '').trim(), ruta, receta
+      notas: (datos.notas || '').trim(), ruta
     };
     return id ? repo().update('productos', id, limpio) : repo().insert('productos', limpio);
   }
@@ -105,11 +79,9 @@
     auth().exigir('material.gestionar');
     const nombre = (datos.nombre || '').trim();
     if (!nombre) throw new DomainError('El nombre del material es obligatorio.');
-    const stock = parseNum(datos.stock), minimo = parseNum(datos.stockMinimo), precio = parseNum(datos.precio);
-    if (datos.stock !== '' && datos.stock !== undefined && isNaN(stock)) throw new DomainError('El stock tiene que ser un número.');
+    const precio = parseNum(datos.precio);
     const limpio = {
       categoria: 'material', nombre, unidad: datos.unidad || 'ud',
-      stock: isNaN(stock) ? 0 : stock, stockMinimo: isNaN(minimo) ? null : minimo,
       precio: isNaN(precio) ? null : precio, notas: (datos.notas || '').trim()
     };
     return id ? repo().update('productos', id, limpio) : repo().insert('productos', limpio);
@@ -120,8 +92,9 @@
     if (!prod) return;
     if (prod.categoria === 'material') {
       auth().exigir('material.gestionar');
-      const enUso = fabricados().some(p => (p.receta || []).some(r => r.materialId === id));
-      if (enUso) throw new DomainError('Este material está en la receta de algún producto. Quítalo de esas recetas antes de eliminarlo.');
+      if (repo().where('consumos', c => c.materialId === id).length) {
+        throw new DomainError('Este material tiene consumos apuntados en pedidos: no se puede eliminar sin perder ese histórico.');
+      }
       repo().where('movimientos', m => m.materialId === id).forEach(m => repo().remove('movimientos', m.id));
     } else {
       auth().exigir('producto.gestionar');
@@ -132,32 +105,8 @@
     repo().remove('productos', id);
   }
 
-  /* -------------------------------- Stock --------------------------------- */
-
-  /** Movimiento de stock (entrada/salida). Uso interno y desde el formulario de ajuste. */
-  function registrarMovimiento(material, tipo, cantidad, nota, extra) {
-    const delta = tipo === 'entrada' ? cantidad : -cantidad;
-    repo().update('productos', material.id, { stock: (parseFloat(material.stock) || 0) + delta });
-    return repo().insert('movimientos', Object.assign({
-      materialId: material.id, fecha: todayISO(), tipo, cantidad, nota: nota || '', auto: false,
-      pedidoId: null, usuarioId: auth().current() ? auth().current().id : null
-    }, extra || {}));
-  }
-
-  function ajustarStock(materialId, tipo, cantidadTxt, nota) {
-    auth().exigir('stock.ajustar');
-    const mat = repo().get('productos', materialId);
-    if (!mat || mat.categoria !== 'material') throw new DomainError('Material no encontrado.');
-    const cantidad = parseNum(cantidadTxt);
-    if (!(cantidad > 0)) throw new DomainError('Introduce una cantidad mayor que 0.');
-    if (tipo !== 'entrada' && tipo !== 'salida') throw new DomainError('Tipo de movimiento no válido.');
-    return registrarMovimiento(mat, tipo, cantidad, (nota || '').trim());
-  }
-
   App.catalogo = {
-    clientes, fabricados, materiales, rutaDe,
-    reservasDeMaterial, materialReservado, materialDisponible, tieneStockBajo, materialesBajos, movimientosDe,
-    guardarCliente, eliminarCliente, guardarProducto, guardarMaterial, eliminarProducto,
-    ajustarStock, registrarMovimiento
+    clientes, fabricados, materiales, rutaDe, movimientosDe,
+    guardarCliente, eliminarCliente, guardarProducto, guardarMaterial, eliminarProducto
   };
 })(window.App = window.App || {});

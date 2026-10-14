@@ -26,7 +26,12 @@
       String(b.creada).localeCompare(String(a.creada)));
   }
 
-  function todas() { return ordenar(repo().all('incidencias')); }
+  /** Incidencias visibles: todas (editor) o las suyas y las de sus OF asignadas (operario). */
+  function todas() {
+    const verTodo = auth().can('pedido.verTodos');
+    const u = auth().current();
+    return ordenar(repo().where('incidencias', x => verTodo || (u && x.usuarioId === u.id) || (x.pedidoId && auth().asignado(x))));
+  }
   function abiertas() { return todas().filter(x => x.tipo === 'incidencia' && !x.resuelta); }
   function dePedido(pedidoId) { return todas().filter(x => x.pedidoId === pedidoId); }
   function deEtapa(pedidoId, idx) { return todas().filter(x => x.pedidoId === pedidoId && x.etapaIdx === idx); }
@@ -40,6 +45,7 @@
     if (pedidoId) {
       const p = repo().get('pedidos', pedidoId);
       if (!p) throw new DomainError('El pedido ya no existe.');
+      if (!auth().can('pedido.verTodos') && !auth().asignado(p)) throw new DomainError('Esa OF no está asignada a ti.');
       if (datos.etapaIdx !== '' && datos.etapaIdx !== null && datos.etapaIdx !== undefined) {
         etapaIdx = Number(datos.etapaIdx);
         if (!p.etapas[etapaIdx]) throw new DomainError('Etapa no encontrada.');

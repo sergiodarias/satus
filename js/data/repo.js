@@ -9,8 +9,8 @@
 (function (App) {
   'use strict';
 
-  const COLECCIONES = ['clientes', 'productos', 'pedidos', 'movimientos', 'tiempos', 'incidencias'];
-  const DATA_VERSION = 2;
+  const COLECCIONES = ['clientes', 'productos', 'pedidos', 'movimientos', 'consumos', 'tiempos', 'incidencias'];
+  const DATA_VERSION = 3;
 
   let db = vacia();
   let adapter = null;
@@ -47,11 +47,13 @@
     });
 
     // Pedidos: garantizar campos nuevos.
-    out.pedidos = out.pedidos.map(p => Object.assign({
-      fechaEntrega: null, consumo: [], materialesDespachados: false, fechaDespacho: null, notas: ''
-    }, p, {
-      etapas: (p.etapas || []).map(e => Object.assign({ asignadoA: null, fecha: null, completada: false }, e))
-    }));
+    out.pedidos = out.pedidos.map(p => {
+      const etapas = (p.etapas || []).map(e => Object.assign({ asignadoA: null, fecha: null, completada: false, consumoMaterial: null }, e));
+      // v2 → v3: la asignación pasa de cada etapa a la OF entera.
+      const asignados = Array.isArray(p.asignados) ? p.asignados.slice()
+        : [...new Set(etapas.map(e => e.asignadoA).filter(Boolean))];
+      return Object.assign({ fechaEntrega: null, notas: '' }, p, { etapas, asignados });
+    });
 
     // Número de orden de fabricación (OF-0001…) para los pedidos que no lo tengan,
     // por orden de fecha. Los existentes se respetan.
@@ -69,7 +71,11 @@
   // Escrituras en vuelo: mientras haya alguna, no se recarga desde el servidor
   // (evita que una lectura vieja pise un cambio que aún se está guardando).
   let pendientes = 0;
+  // >0 mientras se aplican en memoria los pasos de una operación de varios pasos
+  // (se guardan todos juntos al final, ver operacion()).
+  let silencio = 0;
   function guardar(op, col, registro) {
+    if (silencio > 0) return Promise.resolve();
     const snapshot = db;
     // Copia del registro tal y como está ahora (el objeto en memoria puede cambiar después).
     const copia = registro ? JSON.parse(JSON.stringify(registro)) : null;
@@ -164,6 +170,20 @@
       const [quitado] = lista.splice(i, 1);
       guardar('remove', col, quitado);
       return quitado;
+    },
+
+    /**
+     * Operación de varios pasos que se guarda de una vez (todo o nada).
+     * `aplicar` hace los cambios en memoria con insert/update/remove; después
+     * se guarda con una sola llamada: en Supabase, la función `nombre(args)`;
+     * en local, la base entera.
+     */
+    operacion(nombre, args, aplicar) {
+      silencio++;
+      let r;
+      try { r = aplicar(); } finally { silencio--; }
+      guardar('rpc', nombre, args);
+      return r;
     },
 
     /** Sustituye todos los datos (importar, datos de ejemplo, borrar todo). */

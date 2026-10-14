@@ -14,6 +14,11 @@
    - El precio de los productos vive en una tabla aparte (`precios`) que solo
      pueden leer los editores. Aquí se junta y se separa de forma transparente.
    - Las lecturas se paginan de 1000 en 1000 (límite de Supabase por consulta).
+   - op 'rpc' llama a una función de la base de datos (operaciones de varios
+     pasos que se guardan todo o nada, p. ej. regularizar_materiales).
+   - El operario no puede escribir en `pedidos`: al marcar etapas o indicar si
+     hubo material, se usa la función guardar_etapas, que solo deja tocar
+     eso y solo en sus OF asignadas.
    Requiere supabase-js cargado antes (ver index.html).
    ========================================================================== */
 (function (App) {
@@ -21,14 +26,15 @@
 
   const TABLAS = {
     clientes: 'clientes', productos: 'productos', pedidos: 'pedidos',
-    movimientos: 'movimientos_stock', tiempos: 'tiempos', incidencias: 'incidencias'
+    movimientos: 'movimientos_stock', consumos: 'consumos', tiempos: 'tiempos', incidencias: 'incidencias'
   };
 
   const COLUMNAS = {
     clientes: ['id', 'nombre', 'contacto', 'telefono', 'email', 'direccion', 'notas'],
-    productos: ['id', 'categoria', 'nombre', 'notas', 'tipo', 'material', 'dimensiones', 'ruta', 'receta', 'unidad', 'stock', 'stockMinimo'],
-    pedidos: ['id', 'numero', 'clienteId', 'productoId', 'cantidad', 'fechaPedido', 'fechaEntrega', 'notas', 'etapas', 'consumo', 'materialesDespachados', 'fechaDespacho'],
+    productos: ['id', 'categoria', 'nombre', 'notas', 'tipo', 'material', 'dimensiones', 'ruta', 'unidad'],
+    pedidos: ['id', 'numero', 'clienteId', 'productoId', 'cantidad', 'fechaPedido', 'fechaEntrega', 'notas', 'etapas', 'asignados'],
     movimientos: ['id', 'materialId', 'fecha', 'tipo', 'cantidad', 'nota', 'auto', 'pedidoId', 'usuarioId'],
+    consumos: ['id', 'pedidoId', 'etapaIdx', 'etapaNombre', 'materialId', 'cantidad', 'fecha', 'usuarioId', 'nota', 'regularizacionId'],
     tiempos: ['id', 'pedidoId', 'etapaIdx', 'etapaNombre', 'usuarioId', 'modo', 'inicio', 'fin', 'minutos', 'fecha', 'nota'],
     incidencias: ['id', 'tipo', 'gravedad', 'texto', 'pedidoId', 'etapaIdx', 'usuarioId', 'creada', 'resuelta', 'resueltaPor', 'fechaResolucion']
   };
@@ -106,7 +112,12 @@
     async persist(op, coleccion, registro) {
       const tabla = TABLAS[coleccion];
       if (op === 'replaceAll') throw new Error('Con datos compartidos no se puede sustituir todo desde la app.');
+      if (op === 'rpc') { comprobar(await sb().rpc(coleccion, registro)); return; }
       if (!tabla) return;
+      if (coleccion === 'pedidos' && op === 'update' && !App.auth.can('pedido.editar')) {
+        comprobar(await sb().rpc('guardar_etapas', { p_pedido: registro.id, p_etapas: registro.etapas }));
+        return;
+      }
       if (op === 'insert') comprobar(await sb().from(tabla).insert(aFila(coleccion, registro)));
       else if (op === 'update') comprobar(await sb().from(tabla).update(aFila(coleccion, registro)).eq('id', registro.id));
       else if (op === 'remove') comprobar(await sb().from(tabla).delete().eq('id', registro.id));
@@ -129,14 +140,16 @@
         clientes: db.clientes,
         productos: db.productos,
         pedidos: db.pedidos.map(p => Object.assign({}, p, {
-          etapas: (p.etapas || []).map(e => Object.assign({}, e, { asignadoA: valido(e.asignadoA) ? e.asignadoA : null }))
+          etapas: (p.etapas || []).map(e => Object.assign({}, e, { asignadoA: valido(e.asignadoA) ? e.asignadoA : null })),
+          asignados: (p.asignados || []).filter(valido)
         })),
         movimientos: db.movimientos.map(m => Object.assign({}, m, { usuarioId: valido(m.usuarioId) ? m.usuarioId : null })),
+        consumos: db.consumos.filter(c => valido(c.usuarioId) || (omitidos++, false)),
         tiempos: db.tiempos.filter(t => valido(t.usuarioId) || (omitidos++, false)),
         incidencias: db.incidencias.filter(x => valido(x.usuarioId) || (omitidos++, false))
           .map(x => Object.assign({}, x, { resueltaPor: valido(x.resueltaPor) ? x.resueltaPor : null }))
       };
-      for (const col of ['clientes', 'productos', 'pedidos', 'movimientos', 'tiempos', 'incidencias']) {
+      for (const col of ['clientes', 'productos', 'pedidos', 'movimientos', 'consumos', 'tiempos', 'incidencias']) {
         const filas = prep[col].map(r => aFila(col, r));
         for (let i = 0; i < filas.length; i += 500) {
           comprobar(await sb().from(TABLAS[col]).upsert(filas.slice(i, i + 500)));

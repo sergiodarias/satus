@@ -63,6 +63,7 @@
     if (!p) throw new DomainError('El pedido ya no existe.');
     const e = p.etapas[etapaIdx];
     if (!e) throw new DomainError('Etapa no encontrada.');
+    auth().exigir('tiempo.registrar', p);
     return { pedido: p, etapa: e };
   }
 
@@ -70,8 +71,7 @@
   function detener() {
     const u = auth().current();
     const t = u && enMarcha(u.id);
-    if (!t) return null;
-    auth().exigir('tiempo.registrar');
+    if (!t) return null;   // Siempre se puede parar el propio temporizador.
     const fin = new Date();
     const minutos = Math.max(1, Math.round((fin - Date.parse(t.inicio)) / 60000));
     return repo().update('tiempos', t.id, { fin: fin.toISOString(), minutos });
@@ -82,7 +82,6 @@
    * lo para y lo guarda. Devuelve { nuevo, detenido }.
    */
   function iniciar(pedidoId, etapaIdx) {
-    auth().exigir('tiempo.registrar');
     const { etapa } = validarEtapa(pedidoId, etapaIdx);
     const u = auth().current();
     const previo = enMarcha(u.id);
@@ -99,7 +98,6 @@
 
   /** Imputación manual. datos: { pedidoId, etapaIdx, horas, minutos, fecha, nota, usuarioId? } */
   function registrarManual(datos) {
-    auth().exigir('tiempo.registrar');
     const etapaIdx = Number(datos.etapaIdx);
     const { etapa } = validarEtapa(datos.pedidoId, etapaIdx);
     const h = datos.horas === '' || datos.horas === undefined ? 0 : parseNum(datos.horas);

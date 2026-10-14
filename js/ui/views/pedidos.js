@@ -22,6 +22,9 @@
   function lista() {
     const ps = filtrados();
     if (!ps.length) {
+      if (!can('pedido.verTodos') && !App.pedidos.todos().length) {
+        return ui().vacio('No tienes órdenes de fabricación asignadas. Cuando un editor te asigne una, aparecerá aquí.');
+      }
       if (!App.repo.all('pedidos').length) {
         return ui().vacio('Todavía no hay pedidos.', can('pedido.crear') ? '<button type="button" class="btn btn-primario" data-action="nuevo-pedido">' + ui().icono('plus') + 'Crear el primero</button>' : '');
       }
@@ -51,6 +54,7 @@
       '<span class="pedido-pie"><span class="pedido-etapa' + (est.terminado ? ' terminado' : '') + '">' + (est.terminado ? '✓ ' : '') + esc(est.actualNombre) + '</span>' +
       '<span class="fila-chips">' +
       (retraso ? ui().chip('Fuera de plazo', 'alerta') : '') +
+      (can('pedido.asignar') && !(p.asignados || []).length && !est.terminado ? ui().chip('Sin asignar', 'aviso') : '') +
       (inc ? ui().chip(plural(inc, 'incidencia', 'incidencias'), 'alerta') : '') +
       (minutos ? ui().chip(ui().icono('reloj', 'ico-chip') + formatDuracion(minutos)) : '') +
       '</span></span></button>';
@@ -67,7 +71,7 @@
 
     // Acciones rápidas: temporizador en la etapa actual + incidencia.
     html += '<div class="acciones-rapidas">';
-    if (can('tiempo.registrar') && !est.terminado) {
+    if (can('tiempo.registrar', p) && !est.terminado) {
       const aqui = enMarcha && enMarcha.pedidoId === p.id && enMarcha.etapaIdx === est.actualIdx;
       html += aqui
         ? '<button type="button" class="btn btn-parar btn-grande" data-action="parar-tiempo">' + ui().icono('stop') + 'Parar temporizador</button>'
@@ -78,28 +82,22 @@
     }
     html += '</div>';
 
-    // Materiales
-    if (p.consumo && p.consumo.length) {
-      const lineas = p.consumo.map(c => {
-        const m = App.repo.get('productos', c.materialId);
-        return m ? formatNumber(c.cantidad) + ' ' + esc(m.unidad) + ' ' + esc(m.nombre) : null;
-      }).filter(Boolean).join(' · ');
-      html += p.materialesDespachados
-        ? '<div class="aviso-bloque aviso-ok"><strong>Materiales despachados el ' + formatDate(p.fechaDespacho) + '.</strong> Ya descontados del stock. <span class="aviso-detalle">' + lineas + '</span></div>'
-        : '<div class="aviso-bloque"><strong>Materiales reservados, sin despachar.</strong> Aún no descuentan del stock real. <span class="aviso-detalle">' + lineas + '</span>' +
-          (can('pedido.despachar') ? '<button type="button" class="btn btn-pequeno" data-action="despachar" data-id="' + esc(p.id) + '">' + ui().icono('caja') + 'Despachar materiales</button>' : '') + '</div>';
-    }
+    // Trabajadores asignados a la OF
+    html += asignacion(p);
+
+    // Material consumido (total por material)
+    html += resumenMaterial(p);
 
     // Etapas
     html += '<ol class="etapas">' + p.etapas.map((e, i) => {
       const clase = e.completada ? 'hecha' : (i === est.actualIdx && !est.terminado ? 'actual' : 'futura');
-      const puedeMarcar = can('pedido.avanzar') && (i === est.ultimaCompletada + 1 || (i === est.ultimaCompletada && i > 0));
-      const asignado = e.asignadoA ? App.auth.porId(e.asignadoA) : null;
+      const puedeMarcar = can('pedido.avanzar', p) && (i === est.ultimaCompletada + 1 || (i === est.ultimaCompletada && i > 0));
       const corriendo = enMarcha && enMarcha.pedidoId === p.id && enMarcha.etapaIdx === i;
+      const lineas = App.consumos.deEtapa(p.id, i).length;
       const meta = [
         e.fecha ? formatDateShort(e.fecha) : '',
-        asignado ? esc(asignado.nombre) : '',
-        porEtapa[i] ? formatDuracion(porEtapa[i]) : ''
+        porEtapa[i] ? formatDuracion(porEtapa[i]) : '',
+        lineas ? plural(lineas, 'material', 'materiales') : (e.consumoMaterial === 'no' ? 'sin material' : '')
       ].filter(Boolean).join(' · ');
       const marca = puedeMarcar
         ? '<button type="button" class="etapa-marca" data-action="alternar-etapa" data-id="' + esc(p.id) + '" data-idx="' + i + '" aria-label="' + (e.completada ? 'Deshacer' : 'Completar') + ' ' + esc(e.nombre) + '">' + (e.completada ? ui().icono('check') : '') + '</button>'
@@ -127,6 +125,35 @@
     return html + '</div>';
   }
 
+  /** Quién trabaja la OF. El editor la asigna marcando trabajadores; el operario solo lo ve. */
+  function asignacion(p) {
+    const asignados = p.asignados || [];
+    if (!can('pedido.asignar')) {
+      return asignados.length ? '<p class="ayuda">Asignada a ' + esc(App.pedidos.asignadosNombres(p).join(', ')) + '.</p>' : '';
+    }
+    const operarios = App.auth.usuarios().filter(u => u.rol === 'operario');
+    const otros = asignados.filter(id => !operarios.some(u => u.id === id));
+    return '<div class="bloque-asignar"><h3 class="subtitulo">Asignada a</h3>' +
+      (operarios.length ? '<div class="casillas">' + operarios.map(u =>
+        '<label class="casilla"><input type="checkbox" data-change="asignar-of" data-id="' + esc(p.id) + '" value="' + esc(u.id) + '"' + (asignados.includes(u.id) ? ' checked' : '') + '><span>' + esc(u.nombre) + '</span></label>').join('') + '</div>'
+        : '<p class="ayuda">No hay operarios dados de alta.</p>') +
+      (otros.length ? '<p class="ayuda">También: ' + esc(otros.map(id => App.auth.nombreDe(id)).join(', ')) + '.</p>' : '') +
+      (!asignados.length ? '<p class="ayuda">Ningún operario la ve hasta que la asignes.</p>' : '') + '</div>';
+  }
+
+  /** Total de material consumido en la OF, por material. */
+  function resumenMaterial(p) {
+    const resumen = App.consumos.resumenPedido(p.id);
+    if (!resumen.length) return '';
+    const total = resumen.reduce((s, r) => s + (r.coste || 0), 0);
+    const hayCoste = resumen.some(r => r.coste !== null);
+    return '<div class="bloque-material"><h3 class="subtitulo">Material consumido</h3><ul class="lista-simple">' + resumen.map(r =>
+      '<li><strong class="num">' + formatNumber(r.cantidad) + ' ' + esc(r.material ? r.material.unidad : '') + '</strong> ' +
+      esc(r.material ? r.material.nombre : 'Material eliminado') +
+      (r.coste !== null ? ' <span class="ayuda-inline">· ' + formatNumber(r.coste) + ' €</span>' : '') + '</li>').join('') + '</ul>' +
+      (hayCoste ? '<p class="ayuda">Coste de material ≈ ' + formatNumber(Math.round(total * 100) / 100) + ' € (con el coste por unidad del catálogo).</p>' : '') + '</div>';
+  }
+
   App.views = App.views || {};
 
   App.views.pedidos = function renderPedidos() {
@@ -134,6 +161,7 @@
       '<label class="buscador">' + ui().icono('buscar') + '<input type="search" id="buscar-pedidos" data-input="buscar-pedidos" placeholder="' + (can('cliente.ver') ? 'Buscar cliente, producto u OF' : 'Buscar producto u OF') + '" value="' + esc(st().busquedaPedidos) + '" autocomplete="off" enterkeyhint="search" aria-label="Buscar pedidos"></label>' +
       (can('pedido.crear') ? '<button type="button" class="btn btn-primario" data-action="nuevo-pedido">' + ui().icono('plus') + '<span>Nuevo pedido</span></button>' : '') +
       '</div>' +
+      (!can('pedido.verTodos') ? '<p class="intro">Órdenes de fabricación que tienes asignadas.</p>' : '') +
       ui().segmentos('filtro-pedidos', st().filtroPedidos, [['activos', 'En curso'], ['terminados', 'Terminados'], ['todos', 'Todos']]) +
       '<div id="lista-pedidos">' + lista() + '</div>';
   };
@@ -158,14 +186,9 @@
       (e.completada ? ui().chip('Completada el ' + formatDate(e.fecha), 'ok') : ui().chip('Pendiente')) +
       ui().chip(ui().icono('reloj', 'ico-chip') + formatDuracion(total) + ' en total') + '</div>';
 
-    if (can('pedido.asignar')) {
-      c += ui().campo('Asignada a', '<select id="asignar-etapa" data-change="asignar-etapa" data-id="' + esc(p.id) + '" data-idx="' + idx + '">' +
-        ui().opciones(App.auth.usuarios().map(x => [x.id, x.nombre + ' (' + App.auth.rolEtiqueta(x) + ')']), e.asignadoA || '', 'Sin asignar') + '</select>');
-    } else if (e.asignadoA) {
-      c += '<p class="ayuda">Asignada a ' + esc(App.auth.nombreDe(e.asignadoA)) + '.</p>';
-    }
+    c += seccionMaterial(p, e, idx);
 
-    if (can('tiempo.registrar')) {
+    if (can('tiempo.registrar', p)) {
       c += '<div class="cronometro">' + (aqui
         ? '<div class="cronometro-lectura" data-desde="' + esc(enMarcha.inicio) + '">00:00:00</div><button type="button" class="btn btn-parar btn-grande" data-action="parar-tiempo">' + ui().icono('stop') + 'Parar y guardar</button>'
         : '<button type="button" class="btn btn-primario btn-grande" data-action="iniciar-tiempo" data-id="' + esc(p.id) + '" data-idx="' + idx + '">' + ui().icono('play') + 'Iniciar temporizador</button>' +
@@ -199,6 +222,42 @@
     return { titulo: esc(e.nombre), subtitulo: 'Etapa ' + (idx + 1) + ' de ' + p.etapas.length + ' · ' + esc(t.linea), cuerpo: c };
   };
 
+  /** Material consumido en la etapa: ¿sí o no? y, si sí, las líneas (material + cantidad). */
+  function seccionMaterial(p, e, idx) {
+    const lineas = App.consumos.deEtapa(p.id, idx);
+    const puede = can('consumo.registrar', p);
+    const valor = e.consumoMaterial || (lineas.length ? 'si' : null);
+    let c = '<section class="tarjeta-suave seccion-material"><h3 class="subtitulo">¿Se ha consumido material?</h3>';
+    if (puede) {
+      c += '<div class="opciones-radio">' + [['si', 'Sí'], ['no', 'No']].map(([v, t]) =>
+        '<label class="radio"><input type="radio" name="consumo-etapa" value="' + v + '" data-change="consumo-etapa" data-id="' + esc(p.id) + '" data-idx="' + idx + '"' + (valor === v ? ' checked' : '') + '><span>' + t + '</span></label>').join('') + '</div>';
+    } else {
+      c += '<p class="ayuda">' + (valor === 'si' ? 'Sí.' : valor === 'no' ? 'No.' : 'Sin indicar.') + '</p>';
+    }
+    if (lineas.length) {
+      c += '<ul class="registros">' + lineas.map(x => {
+        const m = App.repo.get('productos', x.materialId);
+        return '<li class="registro"><span class="registro-principal"><span class="registro-quien">' + esc(m ? m.nombre : 'Material eliminado') + '</span>' +
+          '<span class="registro-cuando">' + esc(App.auth.nombreDe(x.usuarioId)) + ' · ' + formatDateShort(x.fecha) + (x.regularizacionId ? ' · contado en inventario' : '') + '</span>' +
+          (x.nota ? '<span class="registro-nota">' + esc(x.nota) + '</span>' : '') + '</span>' +
+          '<span class="registro-duracion">' + formatNumber(x.cantidad) + ' ' + esc(m ? m.unidad : '') + '</span>' +
+          (can('consumo.borrar', x) && !x.regularizacionId ? '<button type="button" class="btn-icono btn-icono-peligro" data-action="borrar-consumo" data-id="' + esc(x.id) + '" aria-label="Borrar línea de material">' + ui().icono('borrar') + '</button>' : '') +
+          '</li>';
+      }).join('') + '</ul>';
+    }
+    if (puede && valor === 'si') {
+      const mats = App.catalogo.materiales();
+      c += mats.length
+        ? '<form class="formulario form-consumo" data-form="consumo" data-pedido="' + esc(p.id) + '" data-idx="' + idx + '" novalidate>' +
+          '<div class="fila-campos fila-consumo">' +
+          ui().campo('Material', '<select id="co-material" name="materialId">' + ui().opciones(mats.map(m => [m.id, m.nombre + ' (' + m.unidad + ')']), '', 'Elige material') + '</select>') +
+          ui().campo('Cantidad', '<input id="co-cantidad" name="cantidad" inputmode="decimal" autocomplete="off" placeholder="0" enterkeyhint="done">') + '</div>' +
+          '<button type="submit" class="btn btn-primario">' + ui().icono('plus') + 'Añadir material</button></form>'
+        : '<p class="ayuda">Todavía no hay materiales en el catálogo.</p>';
+    }
+    return c + '</section>';
+  }
+
   /* --------------------------- Hoja: nuevo/editar -------------------------- */
 
   App.sheets.pedido = function ({ id }) {
@@ -225,6 +284,9 @@
       ui().campo('Fecha del pedido', '<input id="pf-fecha" name="fechaPedido" type="date" value="' + esc(p ? p.fechaPedido : todayISO()) + '">') + '</div>' +
       ui().campo('Entrega prevista (opcional)', '<input id="pf-entrega" name="fechaEntrega" type="date" value="' + esc(p && p.fechaEntrega ? p.fechaEntrega : '') + '">') +
       ui().campo('Notas', '<textarea id="pf-notas" name="notas" rows="3" placeholder="Color, acabado, detalles del encargo">' + esc(p ? p.notas : '') + '</textarea>') +
+      (p ? '' : '<fieldset class="editor-lista"><legend>Asignar a <span class="ayuda-inline">— solo verán la OF los marcados</span></legend><div class="casillas">' +
+        App.auth.usuarios().filter(u => u.rol === 'operario').map(u =>
+          '<label class="casilla"><input type="checkbox" name="asignados" value="' + esc(u.id) + '"><span>' + esc(u.nombre) + '</span></label>').join('') + '</div></fieldset>') +
       '<div class="formulario-acciones"><button type="button" class="btn" data-action="cerrar-hoja">Cancelar</button><button type="submit" class="btn btn-primario">' + (p ? 'Guardar cambios' : 'Crear pedido') + '</button></div></form>';
     return { titulo: p ? 'Editar pedido' : 'Nuevo pedido', cuerpo: c };
   };

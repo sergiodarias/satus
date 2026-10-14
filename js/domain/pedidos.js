@@ -4,12 +4,14 @@
    Un pedido copia la ruta de su producto al crearse (`etapas`), así que
    cambiar la ruta de un producto no altera pedidos ya en marcha.
 
-   Cada etapa: { nombre, completada, fecha, asignadoA }
+   Cada etapa: { nombre, completada, fecha, consumoMaterial: 'si'|'no'|null }
+   La OF se asigna entera a uno o varios trabajadores (`asignados`, lista de
+   ids). El operario solo ve y trabaja las OF que tiene asignadas.
    ========================================================================== */
 (function (App) {
   'use strict';
 
-  const { DomainError, parseNum, todayISO, formatNumber } = App.util;
+  const { DomainError, parseNum, todayISO } = App.util;
   const repo = () => App.repo;
   const auth = () => App.auth;
   const cat = () => App.catalogo;
@@ -31,8 +33,10 @@
     };
   }
 
+  /** Pedidos que el usuario actual puede ver: todos (editor) o sus OF asignadas (operario). */
   function todos() {
-    return repo().all('pedidos').slice().sort((a, b) => String(b.fechaPedido).localeCompare(String(a.fechaPedido)));
+    const verTodos = auth().can('pedido.verTodos');
+    return repo().where('pedidos', p => verTodos || auth().asignado(p)).sort((a, b) => String(b.fechaPedido).localeCompare(String(a.fechaPedido)));
   }
   function activos() { return todos().filter(p => !estado(p).terminado); }
   function terminados() { return todos().filter(p => estado(p).terminado); }
@@ -71,51 +75,9 @@
     return !!p.fechaEntrega && !estado(p).terminado && p.fechaEntrega < todayISO();
   }
 
-  /** Etapas no completadas asignadas a un usuario, en pedidos activos. */
-  function tareasDe(usuarioId) {
-    const out = [];
-    activos().forEach(p => p.etapas.forEach((e, i) => {
-      if (!e.completada && e.asignadoA === usuarioId) out.push({ pedido: p, etapaIdx: i, etapa: e, esActual: i === estado(p).actualIdx });
-    }));
-    return out.sort((a, b) => (b.esActual - a.esActual));
-  }
-
-  /* ------------------------------ Materiales ------------------------------ */
-
-  function consumoPara(productoId, cantidad) {
-    const prod = repo().get('productos', productoId);
-    return ((prod && prod.receta) || [])
-      .filter(r => { const m = repo().get('productos', r.materialId); return m && m.categoria === 'material'; })
-      .map(r => ({ materialId: r.materialId, cantidad: (Number(r.cantidad) || 0) * cantidad }));
-  }
-
-  /**
-   * Materiales que quedarían en negativo (disponible) al reservar.
-   * Devuelve textos listos para enseñar. Lista vacía = todo bien.
-   */
-  function faltantesAlReservar(productoId, cantidad, excluirPedidoId) {
-    return consumoPara(productoId, cantidad).map(c => {
-      const mat = repo().get('productos', c.materialId);
-      let disp = cat().materialDisponible(mat);
-      if (excluirPedidoId) {
-        const previo = repo().get('pedidos', excluirPedidoId);
-        (previo && !previo.materialesDespachados ? previo.consumo : []).forEach(x => { if (x.materialId === mat.id) disp += x.cantidad; });
-      }
-      const queda = disp - c.cantidad;
-      return queda < 0 ? mat.nombre + ' (quedaría en ' + formatNumber(queda) + ' ' + (mat.unidad || '') + ')' : null;
-    }).filter(Boolean);
-  }
-
-  /** Materiales cuyo stock real quedaría en negativo al despachar. */
-  function faltantesAlDespachar(pedidoId) {
-    const p = repo().get('pedidos', pedidoId);
-    if (!p) return [];
-    return (p.consumo || []).map(c => {
-      const mat = repo().get('productos', c.materialId);
-      if (!mat) return null;
-      const queda = (parseFloat(mat.stock) || 0) - c.cantidad;
-      return queda < 0 ? mat.nombre + ' (quedaría en ' + formatNumber(queda) + ' ' + (mat.unidad || '') + ')' : null;
-    }).filter(Boolean);
+  /** Nombres de los trabajadores asignados a la OF. */
+  function asignadosNombres(p) {
+    return (p.asignados || []).map(id => auth().nombreDe(id));
   }
 
   /* ------------------------------ Escrituras ------------------------------ */
@@ -126,6 +88,14 @@
     return n;
   }
 
+  /** Limpia una lista de ids de usuario: sin repetidos y solo usuarios que existen. */
+  function limpiarAsignados(ids) {
+    const lista = Array.isArray(ids) ? ids : (ids ? [ids] : []);
+    const fuera = lista.filter(id => id && !auth().porId(id));
+    if (fuera.length) throw new DomainError('Usuario desconocido.');
+    return [...new Set(lista.filter(Boolean))];
+  }
+
   function crear(datos) {
     auth().exigir('pedido.crear');
     if (!repo().get('clientes', datos.clienteId)) throw new DomainError('Elige un cliente.');
@@ -134,12 +104,12 @@
     const cantidad = validarCantidad(datos.cantidad);
     const fecha = datos.fechaPedido || todayISO();
     const etapas = cat().rutaDe(prod).map((nombre, i) => ({
-      nombre, completada: i === 0, fecha: i === 0 ? fecha : null, asignadoA: null
+      nombre, completada: i === 0, fecha: i === 0 ? fecha : null, asignadoA: null, consumoMaterial: null
     }));
     return repo().insert('pedidos', {
       numero: siguienteNumero(), clienteId: datos.clienteId, productoId: prod.id, cantidad, fechaPedido: fecha,
       fechaEntrega: datos.fechaEntrega || null, notas: (datos.notas || '').trim(), etapas,
-      consumo: consumoPara(prod.id, cantidad), materialesDespachados: false, fechaDespacho: null
+      asignados: limpiarAsignados(datos.asignados)
     }, { alPrincipio: true });
   }
 
@@ -153,10 +123,7 @@
       clienteId: datos.clienteId, cantidad, fechaPedido: datos.fechaPedido || p.fechaPedido,
       fechaEntrega: datos.fechaEntrega || null, notas: (datos.notas || '').trim()
     };
-    if (cantidad !== p.cantidad) {
-      if (p.materialesDespachados) throw new DomainError('Los materiales ya se despacharon: no se puede cambiar la cantidad. Ajusta el stock a mano si hace falta.');
-      cambios.consumo = consumoPara(p.productoId, cantidad);
-    }
+    if (datos.asignados !== undefined) cambios.asignados = limpiarAsignados(datos.asignados);
     return repo().update('pedidos', id, cambios);
   }
 
@@ -165,9 +132,9 @@
    * Solo se puede tocar la frontera: la siguiente pendiente o la última completada.
    */
   function alternarEtapa(id, idx) {
-    auth().exigir('pedido.avanzar');
     const p = repo().get('pedidos', id);
     if (!p) throw new DomainError('El pedido ya no existe.');
+    auth().exigir('pedido.avanzar', p);
     const { ultimaCompletada } = estado(p);
     const etapas = p.etapas.map(e => Object.assign({}, e));
     if (idx === ultimaCompletada + 1) { etapas[idx].completada = true; etapas[idx].fecha = todayISO(); }
@@ -176,48 +143,29 @@
     return repo().update('pedidos', id, { etapas });
   }
 
-  function asignarEtapa(id, idx, usuarioId) {
+  /** Asigna o quita un trabajador de la OF. */
+  function alternarAsignado(id, usuarioId, asignar) {
     auth().exigir('pedido.asignar');
     const p = repo().get('pedidos', id);
-    if (!p || !p.etapas[idx]) throw new DomainError('Etapa no encontrada.');
-    if (usuarioId && !auth().porId(usuarioId)) throw new DomainError('Usuario desconocido.');
-    const etapas = p.etapas.map(e => Object.assign({}, e));
-    etapas[idx].asignadoA = usuarioId || null;
-    return repo().update('pedidos', id, { etapas });
-  }
-
-  function despachar(id) {
-    auth().exigir('pedido.despachar');
-    const p = repo().get('pedidos', id);
     if (!p) throw new DomainError('El pedido ya no existe.');
-    if (p.materialesDespachados) throw new DomainError('Los materiales de este pedido ya están despachados.');
-    if (!p.consumo || !p.consumo.length) throw new DomainError('Este pedido no tiene materiales que despachar.');
-    p.consumo.forEach(c => {
-      const mat = repo().get('productos', c.materialId);
-      if (mat) cat().registrarMovimiento(mat, 'salida', c.cantidad, 'Despacho de materiales — inicio de fabricación', { auto: true, pedidoId: p.id });
-    });
-    return repo().update('pedidos', id, { materialesDespachados: true, fechaDespacho: todayISO() });
+    if (!auth().porId(usuarioId)) throw new DomainError('Usuario desconocido.');
+    const actuales = (p.asignados || []).filter(x => x !== usuarioId);
+    return repo().update('pedidos', id, { asignados: asignar ? actuales.concat(usuarioId) : actuales });
   }
 
-  /** Elimina el pedido, devuelve al stock lo despachado y borra sus tiempos e incidencias. */
+  /** Elimina el pedido y borra sus tiempos, consumos de material e incidencias. */
   function eliminar(id) {
     auth().exigir('pedido.eliminar');
     const p = repo().get('pedidos', id);
     if (!p) return;
-    if (p.materialesDespachados) {
-      (p.consumo || []).forEach(c => {
-        const mat = repo().get('productos', c.materialId);
-        if (mat) cat().registrarMovimiento(mat, 'entrada', c.cantidad, 'Devolución por eliminación de pedido despachado', { auto: true, pedidoId: id });
-      });
-    }
+    repo().where('consumos', c => c.pedidoId === id).forEach(c => repo().remove('consumos', c.id));
     repo().where('tiempos', t => t.pedidoId === id).forEach(t => repo().remove('tiempos', t.id));
     repo().where('incidencias', x => x.pedidoId === id).forEach(x => repo().remove('incidencias', x.id));
     repo().remove('pedidos', id);
   }
 
   App.pedidos = {
-    estado, todos, activos, terminados, titulo, codigo, retrasado, tareasDe,
-    consumoPara, faltantesAlReservar, faltantesAlDespachar,
-    crear, editar, alternarEtapa, asignarEtapa, despachar, eliminar
+    estado, todos, activos, terminados, titulo, codigo, retrasado, asignadosNombres,
+    crear, editar, alternarEtapa, alternarAsignado, eliminar
   };
 })(window.App = window.App || {});

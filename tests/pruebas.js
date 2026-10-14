@@ -64,7 +64,7 @@ async function arrancar({ almacen, url, supabase } = {}) {
   await t.clic('[data-action="cargar-demo"]');
   check(t.App.repo.all('pedidos').length === 4, 'Carga los datos de ejemplo (4 pedidos)');
 
-  console.log('\n2. Editor: catálogo, pedido, stock');
+  console.log('\n2. Editor: catálogo, pedido, asignación');
   await t.clic('[data-action="pestana"][data-valor="clientes"]');
   await t.clic(t.accion('nuevo-cliente'));
   t.rellenar('#cl-nombre', 'Taller Prueba S.L.');
@@ -76,16 +76,35 @@ async function arrancar({ almacen, url, supabase } = {}) {
   await t.clic('[data-action="pestana"][data-valor="catalogo"]');
   await t.clic('[data-action="vista-catalogo"][data-valor="materiales"]');
   await t.clic(t.accion('nuevo-material'));
+  check(!t.$('#ma-stock') && !t.$('#ma-minimo'), 'El material ya no pide stock ni mínimo');
   t.rellenar('#ma-nombre', 'Pigmento ocre');
   t.$('#ma-unidad').value = 'kg';
-  t.rellenar('#ma-stock', '3,5');
-  t.rellenar('#ma-minimo', '1');
+  t.rellenar('#ma-precio', '12,5');
   await t.enviar('form[data-form="material"]');
   const pig = t.App.catalogo.materiales().find(m => m.nombre === 'Pigmento ocre');
-  check(pig && pig.stock === 3.5, 'Crea un material aceptando coma decimal (3,5 kg)');
+  check(pig && pig.precio === 12.5 && pig.unidad === 'kg', 'Crea un material con coste (coma decimal)');
+
+  // Lupa de búsqueda
+  check(!!t.$('#buscar-materiales'), 'Hay buscador en Materiales');
+  t.rellenar('#buscar-materiales', 'pigm');
+  check(t.$$('#lista-materiales .ficha').length === 1 && /Pigmento ocre/.test(t.$('#lista-materiales').textContent), 'Buscar «pigm» deja solo Pigmento ocre');
+  t.rellenar('#buscar-materiales', 'microcemento');
+  check(t.$$('#lista-materiales .ficha').length === 2, 'Buscar «microcemento» encuentra los 2 microcementos');
+  t.rellenar('#buscar-materiales', 'hidrofugo');
+  check(t.$$('#lista-materiales .ficha').length === 1, 'La búsqueda ignora tildes (hidrofugo → hidrófugo)');
+  t.rellenar('#buscar-materiales', 'zzz');
+  check(/Ningún material coincide/.test(t.$('#lista-materiales').textContent), 'Sin resultados lo dice');
+  t.rellenar('#buscar-materiales', '');
+  // Gastado en negativo
+  const base = t.App.catalogo.materiales().find(m => m.nombre === 'Microcemento base');
+  const fichaBase = t.$('#producto-' + base.id + ' .stock-num').textContent;
+  check(fichaBase === '−11,5', 'Microcemento base muestra −11,5 (gastado sin poner a 0; lo ya contado no suma)');
 
   await t.clic('[data-action="vista-catalogo"][data-valor="productos"]');
   await t.clic(t.accion('nuevo-producto'));
+  check(!t.$('#editor-receta'), 'El producto ya no tiene receta de materiales');
+  check(t.$$('#editor-ruta li').length === 16, 'La ruta base nueva tiene 16 etapas');
+  check(t.$$('#editor-ruta input')[3].value === 'Aplicar puente de unión' && t.$$('#editor-ruta input')[15].value === 'Entregar pedido', 'Ruta base: «Aplicar puente de unión» … «Entregar pedido»');
   t.rellenar('#pr-nombre', 'Taburete Cal');
   const nEtapas = t.$$('#editor-ruta li').length;
   await t.clic('[data-action="ruta-quitar"]');
@@ -93,10 +112,6 @@ async function arrancar({ almacen, url, supabase } = {}) {
   await t.clic('[data-action="ruta-anadir"]');
   const inputs = t.$$('#editor-ruta input');
   inputs[inputs.length - 1].value = 'Revisión final';
-  await t.clic('[data-action="receta-anadir"]');
-  const fila = t.$$('#editor-receta li').pop();
-  fila.querySelector('select').value = pig.id;
-  fila.querySelector('input').value = '2';
   // Error de validación: no debe perder lo escrito
   t.rellenar('#pr-nombre', '');
   await t.enviar('form[data-form="producto"]');
@@ -106,7 +121,6 @@ async function arrancar({ almacen, url, supabase } = {}) {
   await t.enviar('form[data-form="producto"]');
   const tab = t.App.catalogo.fabricados().find(p => p.nombre === 'Taburete Cal');
   check(tab && tab.ruta[tab.ruta.length - 1] === 'Revisión final' && tab.ruta.length === nEtapas, 'Guarda producto con la ruta editada');
-  check(tab && tab.receta.length === 1 && tab.receta[0].cantidad === 2, 'Guarda la receta del producto');
 
   await t.clic('[data-action="pestana"][data-valor="pedidos"]');
   await t.clic(t.accion('nuevo-pedido'));
@@ -115,15 +129,20 @@ async function arrancar({ almacen, url, supabase } = {}) {
   t.rellenar('#pf-producto', tab.id);
   check(/Revisión final/.test(t.$('#pf-ruta').textContent), 'Al elegir producto se ve su ruta');
   t.rellenar('#pf-cantidad', '2');
+  check(t.$$('#sheet-root input[name="asignados"]').length === 3, 'El formulario deja asignar la OF a los 3 operarios');
+  t.$('#sheet-root input[name="asignados"][value="u-usuario1"]').checked = true;
   await t.enviar('form[data-form="pedido"]');
-  // 2 unidades × 2 kg = 4 kg > 3,5 kg disponibles → pide confirmación
-  check(!!t.$('#dialog-root .dialogo'), 'Avisa de material insuficiente antes de reservar');
-  await t.confirmarDialogo();
+  check(!t.$('#dialog-root .dialogo'), 'Ya no hay aviso de material insuficiente (sin reservas)');
   const ped = t.App.repo.all('pedidos').find(p => p.clienteId === cli.id);
   check(!!ped && ped.etapas.length === nEtapas && ped.etapas[0].completada, 'Crea el pedido con su ruta y la primera etapa hecha');
-  check(t.App.catalogo.materialDisponible(t.App.repo.get('productos', pig.id)) === -0.5, 'Reserva material: disponible 3,5 − 4 = −0,5');
-  check(t.App.repo.get('productos', pig.id).stock === 3.5, 'La reserva no toca el stock real');
+  check(ped && ped.asignados.length === 1 && ped.asignados[0] === 'u-usuario1', 'La OF nace asignada a Usuario 1');
   check(!!t.$('#pedido-' + ped.id + '.abierto'), 'El pedido nuevo aparece abierto');
+  check(!t.accion('despachar'), 'Ya no existe «Despachar materiales»');
+
+  // Asignar también a Usuario 3 desde el detalle
+  const casilla3 = t.$('#pedido-' + ped.id + ' input[data-change="asignar-of"][value="u-usuario3"]');
+  casilla3.checked = true; casilla3.dispatchEvent(new t.w.Event('change', { bubbles: true }));
+  check(t.App.repo.get('pedidos', ped.id).asignados.join() === 'u-usuario1,u-usuario3', 'Asigna la OF a un segundo trabajador (Usuario 3)');
 
   await t.clic('[data-action="alternar-etapa"][data-id="' + ped.id + '"][data-idx="1"]');
   check(t.App.repo.get('pedidos', ped.id).etapas[1].completada, 'Avanza la etapa 2');
@@ -131,63 +150,103 @@ async function arrancar({ almacen, url, supabase } = {}) {
   check(!t.App.repo.get('pedidos', ped.id).etapas[1].completada, 'Deshace la etapa 2');
   check(!t.$('[data-action="alternar-etapa"][data-id="' + ped.id + '"][data-idx="5"]'), 'No deja saltarse etapas');
 
-  await t.clic('[data-action="despachar"][data-id="' + ped.id + '"]');
-  await t.confirmarDialogo();
-  check(t.App.repo.get('productos', pig.id).stock === -0.5, 'Despachar descuenta del stock real');
-  check(t.App.catalogo.movimientosDe(pig.id).some(m => m.pedidoId === ped.id && m.tipo === 'salida'), 'Queda un movimiento de salida');
+  // El panel del editor avisa del material gastado sin poner a 0
+  await t.clic('[data-action="pestana"][data-valor="panel"]');
+  check(/Material gastado sin poner a 0/.test(t.$('#contenido').textContent) && !/stock bajo/i.test(t.$('#contenido').textContent), 'Panel: «Material gastado sin poner a 0» (ya no hay stock bajo)');
 
-  // Asignar etapa a usuario1
-  await t.clic('[data-action="abrir-etapa"][data-id="' + ped.id + '"][data-idx="1"]');
-  t.rellenar('#asignar-etapa', 'u-usuario1');
-  check(t.App.repo.get('pedidos', ped.id).etapas[1].asignadoA === 'u-usuario1', 'Asigna la etapa a Usuario 1');
-  await t.clic('[data-action="cerrar-hoja"].btn-icono');
-
-  console.log('\n3. Operario: solo lectura + tiempos + incidencias');
+  console.log('\n3. Operario: solo sus OF + etapas + material + tiempos + incidencias');
   const almacen = t.almacenActual();
   t = await arrancar({ almacen, url: 'https://ejemplo.github.io/produccion/?como=usuario1&modo=local' });
   check(t.$('.usuario-nombre').textContent === 'Usuario 1', 'Entra como Usuario 1 con ?como=usuario1 (y los datos persisten)');
-  check(!!t.$('.tarea') && /Mi trabajo/.test(t.$('#contenido').textContent), 'El panel muestra "Mi trabajo" con sus tareas asignadas');
-  await t.clic('[data-action="pestana"][data-valor="pedidos"]');
-  check(!t.accion('nuevo-pedido'), 'No ve "Nuevo pedido"');
+  check(t.$$('.pestana').length === 2 && !t.$('[data-valor="panel"].pestana') && !t.$('[data-valor="catalogo"].pestana') && !t.$('[data-valor="clientes"].pestana'), 'Solo ve «Mis OF» e Incidencias: ni Panel, ni Catálogo, ni Clientes');
+  check(t.App.ui.state.pestana === 'pedidos' && /Mis OF/.test(t.$('.pestana.activa').textContent), 'Entra directamente en «Mis OF»');
   await t.clic('[data-action="filtro-pedidos"][data-valor="todos"]');
+  const visibles = t.$$('#lista-pedidos .pedido').map(el => el.id.replace('pedido-', ''));
+  const suyas = t.App.repo.all('pedidos').filter(p => p.asignados.includes('u-usuario1')).map(p => p.id);
+  check(visibles.length === suyas.length && suyas.every(id => visibles.includes(id)), 'Ve exactamente sus OF asignadas (' + suyas.length + ')');
+  const ajenaOF = t.App.repo.all('pedidos').find(p => !p.asignados.includes('u-usuario1'));
+  check(!!ajenaOF && !visibles.includes(ajenaOF.id), 'No ve OF que no tiene asignadas');
+  check(!t.accion('nuevo-pedido'), 'No ve "Nuevo pedido"');
   await t.clic('[data-action="alternar-pedido"][data-id="' + ped.id + '"]');
-  check(!t.$('[data-action="alternar-etapa"]'), 'No puede marcar etapas');
-  check(!t.accion('eliminar-pedido') && !t.accion('editar-pedido') && !t.accion('despachar'), 'No ve editar, eliminar ni despachar');
-  check(t.$$('.pestana').length === 3 && !t.$('[data-valor="catalogo"].pestana') && !t.$('[data-valor="clientes"].pestana'), 'Solo ve Panel, Pedidos e Incidencias (sin Catálogo ni Clientes)');
+  check(!t.accion('eliminar-pedido') && !t.accion('editar-pedido') && !t.$('input[data-change="asignar-of"]'), 'No ve editar, eliminar ni asignar');
+  check(/Asignada a Usuario 1, Usuario 3/.test(t.$('#pedido-' + ped.id).textContent), 'Ve con quién comparte la OF');
   const clienteDelPedido = t.App.repo.get('clientes', ped.clienteId).nombre;
   check(!t.$('#contenido').textContent.includes(clienteDelPedido) && !t.$('#contenido').textContent.includes('Estudio Brisa'), 'No aparece el nombre de ningún cliente en sus pedidos');
   check(t.$('#pedido-' + ped.id + ' .pedido-cliente').textContent === 'Taburete Cal' && /OF-\d{4}/.test(t.$('#pedido-' + ped.id).textContent), 'Ve la orden de fabricación: producto y número OF');
-  check(!/€/.test(t.d.body.textContent), 'No aparece ningún precio');
-  await t.clic('[data-action="pestana"][data-valor="panel"]');
-  check(!/stock bajo/i.test(t.$('#contenido').textContent) && !t.$('#contenido').textContent.includes('Estudio Brisa'), 'El panel no enseña stock ni clientes');
-  await t.clic('[data-action="pestana"][data-valor="pedidos"]');
 
-  // Defensa en profundidad: la lógica de negocio también bloquea
+  // Marca etapas en su OF
+  await t.clic('[data-action="alternar-etapa"][data-id="' + ped.id + '"][data-idx="1"]');
+  check(t.App.repo.get('pedidos', ped.id).etapas[1].completada, 'El operario marca la etapa 2 de su OF');
   let bloqueado = false;
-  try { t.App.pedidos.alternarEtapa(ped.id, 1); } catch (e) { bloqueado = /permiso/.test(e.message); }
-  check(bloqueado, 'La lógica de negocio rechaza al operario aunque se salte la interfaz');
+  try { t.App.pedidos.alternarEtapa(ajenaOF.id, 1); } catch (e) { bloqueado = /permiso/.test(e.message); }
+  check(bloqueado, 'La lógica de negocio no le deja marcar etapas de una OF ajena');
   bloqueado = false;
   try { t.App.catalogo.guardarCliente({ nombre: 'X' }); } catch (e) { bloqueado = /permiso/.test(e.message); }
   check(bloqueado, 'Tampoco puede crear clientes por código');
+  bloqueado = false;
+  try { t.App.pedidos.alternarAsignado(ped.id, 'u-usuario2', true); } catch (e) { bloqueado = /permiso/.test(e.message); }
+  check(bloqueado, 'Ni asignarse OF por código');
+
+  // Material consumido en una etapa
+  await t.clic('[data-action="abrir-etapa"][data-id="' + ped.id + '"][data-idx="3"]');
+  check(!!t.$('#sheet-root input[data-change="consumo-etapa"][value="si"]') && !t.$('form[data-form="consumo"]'), 'La etapa pregunta «¿Se ha consumido material?» (aún sin líneas)');
+  const radioNo = t.$('#sheet-root input[data-change="consumo-etapa"][value="no"]');
+  radioNo.checked = true; radioNo.dispatchEvent(new t.w.Event('change', { bubbles: true }));
+  check(t.App.repo.get('pedidos', ped.id).etapas[3].consumoMaterial === 'no', 'Marca «No» y queda guardado en la etapa');
+  const radioSi = t.$('#sheet-root input[data-change="consumo-etapa"][value="si"]');
+  radioSi.checked = true; radioSi.dispatchEvent(new t.w.Event('change', { bubbles: true }));
+  check(t.App.repo.get('pedidos', ped.id).etapas[3].consumoMaterial === 'si' && !!t.$('form[data-form="consumo"]'), 'Marca «Sí» y aparece el formulario de líneas');
+  t.$('#co-material').value = pig.id;
+  t.rellenar('#co-cantidad', '1,25');
+  await t.enviar('form[data-form="consumo"]');
+  t.$('#co-material').value = base.id;
+  t.rellenar('#co-cantidad', '2');
+  await t.enviar('form[data-form="consumo"]');
+  t.$('#co-material').value = pig.id;
+  t.rellenar('#co-cantidad', '0,75');
+  await t.enviar('form[data-form="consumo"]');
+  const lineas = t.App.consumos.deEtapa(ped.id, 3);
+  check(lineas.length === 3 && lineas.every(x => x.usuarioId === 'u-usuario1' && !x.regularizacionId), 'Añade 3 líneas de material a su nombre');
+  check(t.$$('#sheet-root .seccion-material .registro').length === 3, 'Las líneas se ven en la etapa');
+  t.rellenar('#co-cantidad', '1');
+  await t.enviar('form[data-form="consumo"]');
+  check(/Elige un material/.test(t.toast()) && t.App.consumos.deEtapa(ped.id, 3).length === 3, 'Sin material elegido no apunta nada');
+  t.$('#co-material').value = pig.id;
+  t.rellenar('#co-cantidad', '0');
+  await t.enviar('form[data-form="consumo"]');
+  check(/mayor que 0/.test(t.toast()) && t.App.consumos.deEtapa(ped.id, 3).length === 3, 'Rechaza cantidad 0');
+  radioNo.checked = true;
+  const radioNo2 = t.$('#sheet-root input[data-change="consumo-etapa"][value="no"]');
+  radioNo2.checked = true; radioNo2.dispatchEvent(new t.w.Event('change', { bubbles: true }));
+  check(/Quita esas líneas/.test(t.toast()) && t.App.repo.get('pedidos', ped.id).etapas[3].consumoMaterial === 'si' && t.$('#sheet-root input[data-change="consumo-etapa"][value="si"]').checked, 'No deja marcar «No» con líneas apuntadas y vuelve a «Sí»');
+  const lineaBorrar = lineas.find(x => x.cantidad === 0.75);
+  await t.clic('[data-action="borrar-consumo"][data-id="' + lineaBorrar.id + '"]');
+  await t.confirmarDialogo();
+  check(t.App.consumos.deEtapa(ped.id, 3).length === 2, 'Borra su propia línea');
+  bloqueado = false;
+  try { t.App.consumos.registrar({ pedidoId: ajenaOF.id, etapaIdx: 1, materialId: pig.id, cantidad: '1' }); } catch (e) { bloqueado = /permiso/.test(e.message); }
+  check(bloqueado, 'No puede apuntar material en una OF ajena');
+  await t.clic('[data-action="cerrar-hoja"].btn-icono');
+  check(/Material consumido/.test(t.$('#pedido-' + ped.id).textContent) && /1,25 kg/.test(t.$('#pedido-' + ped.id + ' .bloque-material').textContent), 'El detalle de la OF suma el material consumido (1,25 kg pigmento)');
+  check(!/€/.test(t.d.body.textContent), 'No aparece ningún precio (ni el coste del material)');
 
   // Temporizador
-  await t.clic('[data-action="pestana"][data-valor="pedidos"]');
-  if (!t.$('#pedido-' + ped.id + '.abierto')) await t.clic('[data-action="alternar-pedido"][data-id="' + ped.id + '"]');
   await t.clic('[data-action="iniciar-tiempo"][data-id="' + ped.id + '"]');
   const enMarcha = t.App.tiempos.enMarcha('u-usuario3') === null && t.App.tiempos.enMarcha('u-usuario1');
   check(!!enMarcha, 'Inicia el temporizador');
   check(!!t.$('.banner-tiempo'), 'Aparece la barra del temporizador en marcha');
-  // Simular 25 minutos
   enMarcha.inicio = new Date(Date.now() - 25 * 60000).toISOString();
   t.App.app.pintar();
   check(t.$('.banner-tiempo-reloj').textContent.startsWith('00:25'), 'El reloj cuenta desde la hora de inicio (00:25:xx)');
-  // Iniciar en otra etapa para el temporizador anterior
   await t.clic('[data-action="abrir-etapa"][data-id="' + ped.id + '"][data-idx="3"]');
   await t.clic('#sheet-root [data-action="iniciar-tiempo"]');
   const cerrado = t.App.repo.get('tiempos', enMarcha.id);
   check(cerrado.fin && cerrado.minutos === 25, 'Al iniciar otro, el anterior se guarda (25 min)');
   await t.clic('#sheet-root [data-action="parar-tiempo"]');
   check(!t.App.tiempos.enMarcha('u-usuario1') && !t.$('.banner-tiempo'), 'Parar guarda y quita la barra');
+  bloqueado = false;
+  try { t.App.tiempos.iniciar(ajenaOF.id, 1); } catch (e) { bloqueado = /permiso/.test(e.message); }
+  check(bloqueado, 'No puede imputar tiempo en una OF ajena');
 
   // Imputación manual
   t.rellenar('#tm-horas', '1,5');
@@ -203,7 +262,6 @@ async function arrancar({ almacen, url, supabase } = {}) {
   check(/no puede pasar/.test(t.toast()), 'Rechaza imputaciones de más de 16 h');
   check(t.$('#tm-horas').value === '30', 'Con error conserva lo tecleado');
 
-  // Borrar: propio sí, ajeno no
   check(!!t.$('[data-action="borrar-tiempo"][data-id="' + manual.id + '"]'), 'Puede borrar su propio registro');
   const ajeno = t.App.repo.where('tiempos', x => x.usuarioId !== 'u-usuario1')[0];
   bloqueado = false;
@@ -216,12 +274,12 @@ async function arrancar({ almacen, url, supabase } = {}) {
   // Incidencia desde la hoja de etapa
   await t.clic('#sheet-root [data-action="nueva-incidencia"]');
   check(t.$('#inc-pedido').value === ped.id && t.$('#inc-etapa').value === '3', 'La incidencia llega con pedido y etapa ya elegidos');
+  check(![...t.$('#inc-pedido').options].some(o => o.value === ajenaOF.id), 'En la incidencia solo puede elegir sus OF');
   t.$$('input[name="gravedad"]').find(x => x.value === 'alta').checked = true;
   t.rellenar('#inc-texto', 'Falta pigmento para terminar.');
   await t.enviar('form[data-form="incidencia"]');
   const inc = t.App.incidencias.todas().find(x => x.texto === 'Falta pigmento para terminar.');
   check(inc && inc.gravedad === 'alta' && inc.etapaIdx === 3 && inc.usuarioId === 'u-usuario1', 'Registra la incidencia (alta, etapa 4, a su nombre)');
-  // Nota de campo desde la pestaña
   await t.clic('[data-action="pestana"][data-valor="incidencias"]');
   await t.clic(t.accion('nueva-incidencia'));
   const radioNota = t.$('input[name="tipo"][value="nota"]');
@@ -232,22 +290,60 @@ async function arrancar({ almacen, url, supabase } = {}) {
   const nota = t.App.incidencias.todas().find(x => x.texto === 'Humedad alta hoy.');
   check(nota && nota.tipo === 'nota' && nota.pedidoId === null, 'Registra una nota general sin pedido');
   check(!t.accion('resolver-incidencia'), 'El operario no puede resolver incidencias');
+  const incAjena = t.App.repo.all('incidencias').find(x => x.pedidoId && !t.App.repo.get('pedidos', x.pedidoId).asignados.includes('u-usuario1') && x.usuarioId !== 'u-usuario1');
+  check(!!incAjena && !t.App.incidencias.todas().some(x => x.id === incAjena.id), 'No ve incidencias de OF que no son suyas');
   const ajena = t.App.incidencias.todas().find(x => x.usuarioId !== 'u-usuario1');
-  check(!t.$('[data-action="borrar-incidencia"][data-id="' + ajena.id + '"]'), 'No puede borrar incidencias de otros');
+  check(!ajena || !t.$('[data-action="borrar-incidencia"][data-id="' + ajena.id + '"]'), 'No puede borrar incidencias de otros');
 
-  console.log('\n4. Editor resuelve y limpia');
+  console.log('\n4. Editor: poner a 0, consulta por pedido, resolver y limpiar');
   t = await arrancar({ almacen: t.almacenActual(), url: 'https://ejemplo.github.io/produccion/?como=sergio&modo=local' });
+  check(t.App.consumos.gastado(pig.id) === 1.25 && t.App.consumos.gastado(base.id) === 13.5, 'Gastado acumulado: pigmento 1,25 kg y microcemento base 13,5 kg');
+  await t.clic('[data-action="pestana"][data-valor="catalogo"]');
+  await t.clic('[data-action="vista-catalogo"][data-valor="materiales"]');
+  check(t.$('#producto-' + pig.id + ' .stock-num').textContent === '−1,25', 'El material muestra −1,25 kg');
+  await t.clic('[data-action="alternar-producto"][data-id="' + pig.id + '"]');
+  await t.clic('[data-action="poner0-material"][data-id="' + pig.id + '"]');
+  await t.confirmarDialogo();
+  check(t.App.consumos.gastado(pig.id) === 0 && t.$('#producto-' + pig.id + ' .stock-num').textContent === '0', 'Poner a 0 un material deja su gastado en 0');
+  const regPig = t.App.catalogo.movimientosDe(pig.id).find(m => m.tipo === 'regularizacion');
+  check(regPig && regPig.cantidad === 1.25 && regPig.usuarioId === 'u-sergio', 'Queda un movimiento de puesta a 0 con 1,25 kg');
+  check(/Puesta a 0 de/.test(t.$('#producto-' + pig.id).textContent), 'El movimiento se ve en el material');
+  check(t.App.consumos.gastado(base.id) === 13.5, 'Los demás materiales no se tocan');
+  check(t.App.consumos.deEtapa(ped.id, 3).every(x => x.materialId !== pig.id || x.regularizacionId === regPig.id), 'Los consumos quedan marcados con la puesta a 0');
+  await t.clic('[data-action="poner0-todo"]');
+  await t.confirmarDialogo();
+  check(t.App.consumos.materialesConGasto().length === 0 && !t.accion('poner0-todo'), '«Poner todo a 0» deja todos a 0 y el botón desaparece');
+  check(t.App.repo.where('movimientos', m => m.tipo === 'regularizacion').length === 1 + 1 + 4, 'Un movimiento por material puesto a 0 (más el del ejemplo)');
+  bloqueado = false;
+  try { t.App.consumos.poner0(); } catch (e) { bloqueado = /No hay material/.test(e.message); }
+  check(bloqueado, 'Sin nada gastado, poner a 0 avisa');
+
+  // Consulta del gasto de una OF cerrada
+  const cerrada = t.App.pedidos.terminados()[0];
+  t.App.ui.state.pestana = 'pedidos'; t.App.ui.state.filtroPedidos = 'terminados'; t.App.ui.state.pedidoAbierto = cerrada.id; t.App.app.pintar();
+  const bloque = t.$('#pedido-' + cerrada.id + ' .bloque-material');
+  check(!!bloque && /3 kg/.test(bloque.textContent) && /0,5 l/.test(bloque.textContent), 'La OF cerrada sigue mostrando lo que gastó de cada material');
+  check(/€/.test(bloque.textContent), 'El editor ve el coste aproximado del material');
+
+  // Lo apuntado por el operario se ve como editor y se puede borrar si no está contado
+  const linBase = t.App.consumos.deEtapa(ped.id, 3).find(x => x.materialId === base.id);
+  bloqueado = false;
+  try { t.App.consumos.eliminar(linBase.id); } catch (e) { bloqueado = /ya se contó/.test(e.message); }
+  check(bloqueado, 'Un consumo ya puesto a 0 no se puede borrar');
+
   await t.clic('[data-action="pestana"][data-valor="incidencias"]');
   await t.clic('[data-action="resolver-incidencia"][data-id="' + inc.id + '"]');
   check(t.App.repo.get('incidencias', inc.id).resuelta && t.App.repo.get('incidencias', inc.id).resueltaPor === 'u-sergio', 'Sergio resuelve la incidencia');
   await t.clic('[data-action="pestana"][data-valor="pedidos"]');
   await t.clic('[data-action="filtro-pedidos"][data-valor="todos"]');
-  await t.clic('[data-action="alternar-pedido"][data-id="' + ped.id + '"]');
+  if (!t.$('#pedido-' + ped.id + '.abierto')) await t.clic('[data-action="alternar-pedido"][data-id="' + ped.id + '"]');
   await t.clic('[data-action="eliminar-pedido"][data-id="' + ped.id + '"]');
   await t.confirmarDialogo();
   check(!t.App.repo.get('pedidos', ped.id), 'Elimina el pedido');
-  check(t.App.repo.get('productos', pig.id).stock === 3.5, 'El material despachado vuelve al stock');
-  check(!t.App.repo.where('tiempos', x => x.pedidoId === ped.id).length && !t.App.repo.get('incidencias', inc.id), 'Se borran sus tiempos e incidencias');
+  check(!t.App.repo.where('tiempos', x => x.pedidoId === ped.id).length && !t.App.repo.get('incidencias', inc.id) && !t.App.consumos.dePedido(ped.id).length, 'Se borran sus tiempos, material e incidencias');
+  bloqueado = false;
+  try { t.App.catalogo.eliminarProducto(base.id); } catch (e) { bloqueado = /consumos/.test(e.message); }
+  check(bloqueado, 'No deja eliminar un material con consumos apuntados');
 
   console.log('\n5. Importar copia de la versión anterior');
   const legado = {
@@ -260,7 +356,7 @@ async function arrancar({ almacen, url, supabase } = {}) {
   };
   t.App.repo.replaceAll(legado);
   check(t.App.repo.all('movimientos').length === 1 && !t.App.repo.get('productos', 'pr_m').movimientos, 'Convierte los movimientos antiguos a su colección');
-  check(t.App.repo.get('pedidos', 'p_1').etapas[1].asignadoA === null, 'Completa los campos nuevos de las etapas');
+  check(t.App.repo.get('pedidos', 'p_1').etapas[1].asignadoA === null && Array.isArray(t.App.repo.get('pedidos', 'p_1').asignados), 'Completa los campos nuevos (etapas y asignados)');
   t.App.app.pintar();
   check(/Cliente antiguo/.test(t.$('#contenido').textContent), 'Pinta los datos importados');
 
@@ -276,13 +372,14 @@ async function arrancar({ almacen, url, supabase } = {}) {
       perfiles: [{ id: E + '1', nombre: 'Eduardo Díaz', rol: 'editor' }, { id: E + '3', nombre: 'Usuario 1', rol: 'operario' }],
       clientes: [{ id: 'c1', nombre: 'Hotel Marjal', contacto: '', telefono: '', email: '', direccion: '', notas: '', creado: '2026-09-01T10:00:00+00:00' }],
       productos: [
-        { id: 'f1', categoria: 'fabricado', nombre: 'Banco exterior', notas: '', tipo: 'exterior', material: 'cal', dimensiones: '160×45', ruta: ['Corte', 'Base', 'Entrega'], receta: [], unidad: 'ud', stock: 0, stock_minimo: null, creado: '2026-09-01T10:00:00+00:00' }
+        { id: 'f1', categoria: 'fabricado', nombre: 'Banco exterior', notas: '', tipo: 'exterior', material: 'cal', dimensiones: '160×45', ruta: ['Corte', 'Base', 'Entrega'], receta: [], unidad: 'ud', stock: 0, stock_minimo: null, creado: '2026-09-01T10:00:00+00:00' },
+        { id: 'm1', categoria: 'material', nombre: 'Estuco de cal', notas: '', tipo: '', material: '', dimensiones: '', ruta: [], receta: [], unidad: 'kg', stock: 0, stock_minimo: null, creado: '2026-09-01T10:00:00+00:00' }
       ],
       precios: [{ producto_id: 'f1', precio: 890 }],
       pedidos: [{ id: 'p1', numero: 7, cliente_id: 'c1', producto_id: 'f1', cantidad: 2, fecha_pedido: '2026-09-20', fecha_entrega: null, notas: 'Tono arena',
         etapas: [{ nombre: 'Corte', completada: true, fecha: '2026-09-20', asignadoA: null }, { nombre: 'Base', completada: false, fecha: null, asignadoA: E + '3' }, { nombre: 'Entrega', completada: false, fecha: null, asignadoA: null }],
         consumo: [], materiales_despachados: false, fecha_despacho: null, creado: '2026-09-20T10:00:00+00:00' }],
-      movimientos_stock: [], tiempos: [], incidencias: []
+      movimientos_stock: [], consumos: [], tiempos: [], incidencias: []
     }
   };
   function falsoSupabase(estado) {
@@ -308,6 +405,27 @@ async function arrancar({ almacen, url, supabase } = {}) {
     };
     return {
       from,
+      async rpc(nombre, args) {
+        estado.log.push({ rpc: nombre, args: JSON.parse(JSON.stringify(args)) });
+        if (nombre === 'guardar_etapas') {
+          const p = estado.tablas.pedidos.find(x => x.id === args.p_pedido);
+          const uid = estado.sesion && estado.sesion.user.id;
+          // Como la migración 004: sin «asignados», cuenta quien tenía alguna etapa.
+          const asignados = p ? (p.asignados || p.etapas.map(e => e.asignadoA).filter(Boolean)) : [];
+          if (!p || !asignados.includes(uid)) return { error: { message: 'Esa OF no existe o no está asignada a ti.' } };
+          p.etapas = p.etapas.map((e, i) => Object.assign({}, e, { completada: args.p_etapas[i].completada, fecha: args.p_etapas[i].fecha, consumoMaterial: args.p_etapas[i].consumoMaterial }));
+          return { error: null };
+        }
+        if (nombre === 'regularizar_materiales') {
+          args.p_regs.forEach(r => {
+            const total = estado.tablas.consumos.filter(c => r.consumoIds.includes(c.id)).reduce((s, c) => s + c.cantidad, 0);
+            estado.tablas.movimientos_stock.push({ id: r.movimientoId, material_id: r.materialId, tipo: 'regularizacion', cantidad: total, nota: args.p_nota });
+            estado.tablas.consumos.filter(c => r.consumoIds.includes(c.id)).forEach(c => { c.regularizacion_id = r.movimientoId; });
+          });
+          return { error: null };
+        }
+        return { error: { message: 'Función desconocida: ' + nombre } };
+      },
       auth: {
         async getSession() { return { data: { session: estado.sesion } }; },
         async signInWithPassword({ email, password }) {
@@ -353,7 +471,9 @@ async function arrancar({ almacen, url, supabase } = {}) {
   await s2.clic('[data-action="nuevo-pedido"]');
   s2.$('#pf-cliente').value = 'c1';
   await s2.enviar('form[data-form="pedido"]'); await espera(5);
-  check(S.tablas.pedidos.some(p => p.numero === 8 && Array.isArray(p.etapas) && p.etapas.length === 3), 'Pedido nuevo: OF-0008 con sus etapas como jsonb');
+  check(S.tablas.pedidos.some(p => p.numero === 8 && Array.isArray(p.etapas) && p.etapas.length === 3 && Array.isArray(p.asignados)), 'Pedido nuevo: OF-0008 con sus etapas y asignados como jsonb');
+  check(!S.tablas.pedidos.some(p => p.numero === 8 && ('consumo' in p || 'materiales_despachados' in p)), 'Ya no se envían columnas de reservas ni despacho');
+  check(s2.App.repo.get('pedidos', 'p1').asignados.join() === E + '3', 'La asignación de etapa antigua se convierte en asignación de la OF');
 
   // Cambio hecho por otra persona → aparece al recargar
   S.tablas.pedidos[0].notas = 'Cambiado desde otro móvil';
@@ -375,14 +495,36 @@ async function arrancar({ almacen, url, supabase } = {}) {
   // Operario con sesión recordada
   S.sesion = { user: { id: E + '3' } };
   s2 = await arrancar({ url: URL_SRV, supabase: fake });
-  check(s2.$('.usuario-nombre').textContent === 'Usuario 1' && s2.$$('.pestana').length === 3, 'Operario: sesión recordada y solo 3 pestañas');
-  check(!s2.$('#contenido').textContent.includes('Hotel Marjal') && /OF-0007/.test(s2.$('#contenido').textContent), 'Operario: «Mi trabajo» muestra OF-0007, sin cliente');
-  await s2.clic('.tarea [data-action="iniciar-tiempo"]'); await espera(5);
+  check(s2.$('.usuario-nombre').textContent === 'Usuario 1' && s2.$$('.pestana').length === 2, 'Operario: sesión recordada y solo 2 pestañas (Mis OF, Incidencias)');
+  check(!s2.$('#contenido').textContent.includes('Hotel Marjal') && /OF-0007/.test(s2.$('#contenido').textContent), 'Operario: «Mis OF» muestra OF-0007, sin cliente');
+  await s2.clic('[data-action="alternar-pedido"][data-id="p1"]');
+  await s2.clic('#pedido-p1 [data-action="iniciar-tiempo"]'); await espera(5);
   const tFila = S.tablas.tiempos[0];
   check(tFila && tFila.usuario_id === E + '3' && tFila.etapa_idx === 1 && tFila.fin === null, 'Iniciar temporizador inserta en «tiempos» a su nombre');
   await s2.clic('.banner-tiempo [data-action="parar-tiempo"]'); await espera(5);
   check(S.tablas.tiempos[0].fin && S.tablas.tiempos[0].minutos >= 1, 'Parar actualiza la fila con fin y minutos');
+  await s2.clic('[data-action="alternar-etapa"][data-id="p1"][data-idx="1"]'); await espera(5);
+  check(S.log.some(x => x.rpc === 'guardar_etapas') && S.tablas.pedidos[0].etapas[1].completada === true && !S.log.some(x => x.tabla === 'pedidos' && x.op === 'update'), 'Operario marca etapa vía guardar_etapas (no escribe en «pedidos»)');
+  await s2.clic('[data-action="abrir-etapa"][data-id="p1"][data-idx="1"]');
+  const siS = s2.$('#sheet-root input[data-change="consumo-etapa"][value="si"]');
+  siS.checked = true; siS.dispatchEvent(new s2.w.Event('change', { bubbles: true })); await espera(5);
+  s2.$('#co-material').value = 'm1'; s2.rellenar('#co-cantidad', '2,5');
+  await s2.enviar('form[data-form="consumo"]'); await espera(5);
+  const cFila = S.tablas.consumos[0];
+  check(cFila && cFila.material_id === 'm1' && cFila.cantidad === 2.5 && cFila.usuario_id === E + '3' && cFila.regularizacion_id === null, 'Apuntar material inserta en «consumos» a su nombre');
+  check(S.tablas.pedidos[0].etapas[1].consumoMaterial === 'si', 'La etapa queda con «material: sí» en el servidor');
   check(s2.errores.length === 0, 'Modo servidor sin errores en consola' + (s2.errores.length ? ': ' + s2.errores.join(' | ') : ''));
+
+  // Editor pone a 0 con la función de la base de datos
+  S.sesion = { user: { id: E + '1' } };
+  s2 = await arrancar({ url: URL_SRV, supabase: fake });
+  check(s2.App.consumos.gastado('m1') === 2.5, 'El editor ve lo gastado por el operario (2,5 kg)');
+  s2.App.consumos.poner0(['m1']); await espera(5);
+  const llamada = S.log.find(x => x.rpc === 'regularizar_materiales');
+  check(llamada && llamada.args.p_regs.length === 1 && llamada.args.p_regs[0].consumoIds.length === 1, 'Poner a 0 llama una sola vez a regularizar_materiales (todo o nada)');
+  check(S.tablas.consumos[0].regularizacion_id && S.tablas.movimientos_stock.some(m => m.tipo === 'regularizacion' && m.cantidad === 2.5), 'En el servidor queda el movimiento y el consumo marcado');
+  check(!S.log.some(x => x.tabla === 'consumos' && x.op === 'update'), 'No hace actualizaciones sueltas de consumos');
+  check(s2.errores.length === 0, 'Editor en modo servidor sin errores en consola' + (s2.errores.length ? ': ' + s2.errores.join(' | ') : ''));
 
   console.log('\n' + ok + ' correctas, ' + fallos + ' fallidas\n');
   process.exit(fallos ? 1 : 0);

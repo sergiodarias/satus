@@ -9,7 +9,7 @@
 
   App.config = {
     // Súbela en cada publicación (y el CACHE de sw.js). Se ve en Ajustes.
-    VERSION: '0.3.0 · 28/09/2026',
+    VERSION: '0.4.0 · 14/10/2026',
 
     MARCA: { nombre: 'SATUS', lema: 'Materiales que crean momentos', instagram: 'satus_mobiliario' },
 
@@ -41,6 +41,13 @@
     MAX_MINUTOS_MANUAL: 16 * 60,
 
     DEFAULT_ROUTE: [
+      'Pedido recibido', 'Pedir material al carpintero', 'Recibir material del carpintero', 'Aplicar puente de unión',
+      'Dar 1.ª mano base', 'Lijar', 'Dar 2.ª mano base completa', 'Lijar',
+      'Dar 1.ª mano de acabado', 'Lijar', 'Dar 2.ª mano de acabado', 'Lijar',
+      'Dar 1.ª mano de poliuretano', 'Dar 2.ª mano de poliuretano', 'Embalar', 'Entregar pedido'
+    ],
+    // Ruta base anterior (12 etapas). Los productos que aún la tengan se pasan a la nueva.
+    RUTA_ANTERIOR: [
       'Pedido recibido', 'Material pedido al carpintero', 'Material recibido', 'Módulos preparados',
       'Mano de producto base', 'Secado y lijado', 'Mano de producto final (1.ª capa)', 'Secado y lijado',
       'Mano de producto final (2.ª capa)', 'Secado y lijado', 'Poliuretano aplicado', 'Montado y entregado'
@@ -64,13 +71,12 @@
        - 'accion'           → permitido siempre.
        - 'accion:propio'    → permitido solo sobre registros del propio usuario
                               (registro.usuarioId === usuario actual).
-       Las mismas reglas se aplican en la base de datos (supabase/002_permisos.sql).
+       - 'accion:asignado'  → permitido solo en pedidos (OF) asignados al
+                              usuario (pedido.asignados incluye su id).
+       Las mismas reglas se aplican en la base de datos (supabase/*.sql).
 
-       Permisos de lectura que el operario NO tiene (ve la orden de
-       fabricación, pero no el cliente ni los precios):
-         'cliente.ver'  → nombre y datos del cliente, pestaña Clientes
-         'catalogo.ver' → pestaña Catálogo (precios, costes)
-         'stock.ver'    → avisos de stock bajo
+       El operario solo ve las OF que un editor le ha asignado: producto,
+       cantidad, fechas, notas y ruta. Nunca clientes, precios ni el panel.
        ---------------------------------------------------------------------- */
     ROLES: {
       editor: {
@@ -80,8 +86,11 @@
       operario: {
         etiqueta: 'Operario',
         permisos: [
-          'tiempo.registrar',
+          'pedido.avanzar:asignado',
+          'tiempo.registrar:asignado',
           'tiempo.borrar:propio',
+          'consumo.registrar:asignado',
+          'consumo.borrar:propio',
           'incidencia.crear',
           'incidencia.borrar:propio'
         ]

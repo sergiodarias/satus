@@ -39,7 +39,7 @@
     };
     return '<main class="acceso">' + marca('¿Quién está usando la app?') +
       grupo('editor', 'Editores', 'Gestionan pedidos, catálogo, clientes y asignaciones.') +
-      grupo('operario', 'Operarios', 'Ven las órdenes de fabricación e imputan tiempos, incidencias y notas.') +
+      grupo('operario', 'Operarios', 'Ven solo las órdenes de fabricación que tienen asignadas: marcan etapas, tiempos, material e incidencias.') +
       '<p class="acceso-pie">Modo de prueba: acceso sin contraseña y datos guardados solo en este dispositivo.</p></main>';
   }
 
@@ -53,7 +53,7 @@
     const u = App.auth.current();
     const servidor = App.auth.modoServidor();
     let c = '<div class="perfil">' + ui().avatar(u, 'avatar-grande') + '<div><p class="perfil-nombre">' + esc(u.nombre) + '</p>' +
-      '<p class="perfil-rol">' + esc(App.auth.rolEtiqueta(u)) + ' · ' + (u.rol === 'editor' ? 'control total' : 'órdenes de fabricación, tiempos e incidencias') + '</p></div></div>' +
+      '<p class="perfil-rol">' + esc(App.auth.rolEtiqueta(u)) + ' · ' + (u.rol === 'editor' ? 'control total' : 'sus órdenes de fabricación asignadas') + '</p></div></div>' +
       '<button type="button" class="btn btn-ancho" data-action="salir">' + (servidor ? 'Cerrar sesión' : 'Cambiar de usuario') + '</button>';
 
     c += '<h3 class="subtitulo">Datos</h3><p class="ayuda">' + esc(App.repo.adapterDescripcion()) + '.</p>';

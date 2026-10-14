@@ -5,7 +5,7 @@ Pensada primero para iPhone (Safari o instalada en la pantalla de inicio) y
 también para escritorio. Sin compilador ni `npm run build`: se publica
 subiendo los archivos a GitHub Pages.
 
-Versión: `0.2.0 · 28/09/2026` (visible en Ajustes).
+Versión: `0.4.0 · 14/10/2026` (visible en Ajustes).
 
 Datos compartidos en **Supabase** (proyecto `elhwoubtuptcfbetvgpd`), con inicio de sesión por email y contraseña. Para probar sin servidor: añade `?modo=local` a la dirección.
 
@@ -77,15 +77,16 @@ js/
     local-adapter.js        Guardado en este dispositivo (modo de pruebas)
     supabase-adapter.js     Datos compartidos en Supabase (modo normal)
   domain/
-    catalogo.js             Clientes, productos, materiales, stock
-    pedidos.js              Pedidos, etapas, asignaciones, reservas y despacho
+    catalogo.js             Clientes, productos y materiales
+    pedidos.js              Pedidos, etapas y asignación de la OF a trabajadores
+    consumos.js             Material consumido por etapa y puesta a 0
     tiempos.js              Temporizador e imputación manual
     incidencias.js          Incidencias y notas de campo
   ui/
     components.js           Iconos, chips, hoja inferior, diálogo, avisos
     views/                  panel, pedidos, incidencias, catalogo, clientes, sesion
   app.js                    Arranque, estado de pantalla y eventos
-supabase/                   SQL: 001 tablas, 002 permisos, 003 perfiles de usuario
+supabase/                   SQL: 001 tablas, 002 permisos, 003 perfiles, 004 consumos y asignación por OF
 tests/pruebas.js            Batería de pruebas con clics reales
 ```
 
@@ -98,30 +99,47 @@ tests/pruebas.js            Batería de pruebas con clics reales
 | **Editor** | Eduardo Díaz, Sergio Díaz |
 | **Operario** | usuario1, usuario2, usuario3 |
 
-El operario ve la **orden de fabricación** (número OF, producto, cantidad, fechas,
-notas, ruta, materiales y avance), **nunca el cliente ni los precios**.
+El operario **solo ve las OF que un editor le ha asignado** (número OF, producto,
+cantidad, fechas, notas, ruta, material consumido y avance). Nunca el panel, los
+clientes ni los precios. Una OF se puede asignar a uno o varios trabajadores.
 
 | Acción | Editor | Operario |
 |---|:---:|:---:|
-| Ver órdenes de fabricación y su avance | ✓ | ✓ |
-| Ver clientes (nombre y contacto) | ✓ | — |
-| Ver precios, costes, catálogo y stock | ✓ | — |
-| Crear, editar y eliminar pedidos | ✓ | — |
-| Marcar etapas, asignarlas a personas, despachar materiales | ✓ | — |
-| Productos (con ruta y receta), materiales, ajustes de stock, clientes | ✓ | — |
-| Imputar tiempo (temporizador o manual) | ✓ (también a nombre de otro) | ✓ solo a su nombre |
+| Ver órdenes de fabricación y su avance | ✓ todas | ✓ solo las asignadas |
+| Panel, clientes, precios, costes y catálogo | ✓ | — |
+| Crear, editar, eliminar y asignar pedidos | ✓ | — |
+| Marcar etapas | ✓ | ✓ en sus OF |
+| Apuntar material consumido en una etapa | ✓ | ✓ en sus OF, a su nombre |
+| Borrar líneas de material (si no se han puesto a 0) | ✓ todas | ✓ solo las suyas |
+| Poner a 0 lo gastado (al cuadrar el inventario) | ✓ | — |
+| Productos (con ruta), materiales, clientes | ✓ | — |
+| Imputar tiempo (temporizador o manual) | ✓ (también a nombre de otro) | ✓ en sus OF, a su nombre |
 | Borrar registros de tiempo | ✓ todos | ✓ solo los suyos |
-| Reportar incidencias y notas de campo | ✓ | ✓ |
+| Reportar incidencias y notas de campo | ✓ | ✓ generales o de sus OF |
 | Resolver / reabrir incidencias | ✓ | — |
 | Borrar incidencias | ✓ todas | ✓ solo las suyas |
 | Copias de seguridad | ✓ | — |
 
-Se aplica en tres sitios: la interfaz (el operario solo tiene las pestañas Panel,
-Pedidos e Incidencias), la lógica de negocio y la base de datos. En Supabase el
-operario **no puede leer** las tablas `clientes`, `precios` ni `movimientos_stock`
-aunque manipule la app; por eso el precio vive en una tabla aparte.
+Se aplica en tres sitios: la interfaz (el operario solo tiene las pestañas «Mis OF»
+e Incidencias), la lógica de negocio y la base de datos. En Supabase el operario
+**no puede leer** OF que no tiene asignadas (ni sus tiempos, material o incidencias),
+ni las tablas `clientes`, `precios` o `movimientos_stock`, aunque manipule la app.
+Tampoco escribe en `pedidos`: marca etapas con la función `guardar_etapas()`, que
+solo deja tocar «hecha», fecha y «material sí/no» de sus OF.
 
-Para cambiar permisos: `ROLES` en `js/config.js` **y** `supabase/002_permisos.sql`.
+### Material consumido
+
+El stock y el inventario se llevan en otra app. Aquí:
+
+1. En cada etapa se indica **¿Se ha consumido material?** Sí / No. Si sí, se añaden
+   líneas: material + cantidad.
+2. En **Catálogo → Materiales** (con buscador) cada material muestra en negativo lo
+   gastado desde la última vez que se cuadró el inventario.
+3. Al cuadrar el inventario en la otra app: **Poner a 0** en un material o
+   **Poner todo a 0**. Queda un movimiento con lo que se puso a 0, y cada pedido
+   (también los cerrados) sigue mostrando lo que gastó de cada material.
+
+Para cambiar permisos: `ROLES` en `js/config.js` **y** las políticas de `supabase/` (002 y 004).
 
 ---
 
@@ -135,8 +153,8 @@ navegador con otra cuenta para tener las dos vistas a la vez.
 **Modo de pruebas (sin servidor ni contraseña):** añade `?modo=local` a la dirección.
 - Avatar → **Cambiar de usuario** → elige a cualquiera de los 5.
 - O entra directo: `?modo=local&como=eduardo`, `?modo=local&como=usuario1`…
-- Como editor, **Ajustes → Cargar datos de ejemplo**. `usuario1` y `usuario2` ya
-  tienen etapas asignadas, así que verán «Mi trabajo» en el Panel.
+- Como editor, **Ajustes → Cargar datos de ejemplo**. `usuario1`, `usuario2` y
+  `usuario3` ya tienen OF asignadas, así que verán algo en «Mis OF».
 
 Los datos del modo de pruebas se quedan en ese navegador y no tocan el servidor.
 
@@ -147,7 +165,7 @@ Los datos del modo de pruebas se quedan en ese navegador y no tocan el servidor.
 - **Rápido:** doble clic en `index.html` y añade `?modo=local` a la dirección.
 - **Como en producción** (con service worker): `python3 -m http.server 8000` y abrir
   `http://localhost:8000`.
-- **Pruebas automáticas** (84 comprobaciones con clics reales, por perfil, en modo local y con un Supabase simulado):
+- **Pruebas automáticas** (133 comprobaciones con clics reales, por perfil, en modo local y con un Supabase simulado):
 
   ```
   npm install jsdom
@@ -196,12 +214,15 @@ Ejemplo: una pestaña «Entregas».
 5. Subir la carpeta a GitHub y activar Pages (sección 6). Entrar con Eduardo o Sergio.
 6. Traer los datos de la versión anterior: **Ajustes → Subir copia al servidor** con el
    JSON exportado. Añade y actualiza por identificador; no borra nada.
+7. Versión 0.4.0: ejecutar `supabase/004_consumos_y_asignacion.sql` (una vez). Pasa a
+   la ruta base nueva los productos que tenían la antigua, convierte las etapas
+   asignadas en OF asignadas y crea la tabla de material consumido.
 
 La app vuelve a leer del servidor al volver a primer plano, cada 60 segundos mientras
 está abierta y con **Ajustes → Recargar datos ahora**. No recarga mientras hay un
 formulario abierto, para no perder lo que se está escribiendo.
 
-El SQL está probado contra Postgres 16 simulando cada perfil (40 comprobaciones).
+El SQL está probado contra Postgres 16 simulando cada perfil (40 comprobaciones para 001–003 y 31 para 004).
 
 ---
 
@@ -210,11 +231,10 @@ El SQL está probado contra Postgres 16 simulando cada perfil (40 comprobaciones
 - Guardar necesita conexión. Sin cobertura la app abre, pero los cambios fallan
   (sale un aviso rojo). Una cola para guardar al recuperar señal queda para después.
 - Los cambios de los demás llegan al recargar (máximo 60 s), no al instante.
-- Despachar materiales hace varias escrituras seguidas desde la app. La base de datos
-  ya tiene `despachar_materiales()` para hacerlo de una vez; conectarla es el siguiente
-  paso.
-- El operario puede leer el stock de los materiales a nivel de base de datos (la app
-  no se lo enseña). Si hace falta ocultarlo también, se mueve a otra tabla como el precio.
+- El orden de las etapas (solo la siguiente o deshacer la última) lo controla la app;
+  la base de datos solo impide que el operario toque OF ajenas o cambie la ruta.
+- Las columnas antiguas de stock, receta, reservas y despacho siguen en la base de
+  datos sin usarse (no molestan; se pueden borrar más adelante).
 - La ruta de un pedido se copia del producto al crearlo; editar la ruta de un pedido
   concreto queda para una iteración posterior.
 - Las copias de seguridad no se pueden descargar desde la vista previa en claude.ai

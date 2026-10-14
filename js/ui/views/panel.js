@@ -14,35 +14,9 @@
       '<span class="fila-sub">' + sub + '</span></span>' + derecha + '</button>';
   }
 
-  function misTareas(usuario) {
-    const tareas = App.pedidos.tareasDe(usuario.id);
-    const hoyMin = App.tiempos.sumar(App.tiempos.delUsuarioEnFecha(usuario.id, todayISO()));
-    let html = '<section class="seccion"><div class="seccion-cabecera"><h2 class="seccion-titulo">Mi trabajo</h2>' +
-      '<span class="seccion-extra">Hoy llevas ' + formatDuracion(hoyMin) + '</span></div>';
-    if (!tareas.length) {
-      html += '<p class="ayuda">No tienes etapas asignadas ahora mismo. Puedes imputar tiempo en cualquier pedido desde la pestaña Pedidos.</p>';
-    } else {
-      html += tareas.map(tk => {
-        const t = App.pedidos.titulo(tk.pedido);
-        const activo = App.tiempos.enMarcha(usuario.id);
-        const esteEnMarcha = activo && activo.pedidoId === tk.pedido.id && activo.etapaIdx === tk.etapaIdx;
-        return '<div class="tarea">' +
-          '<button type="button" class="tarea-info" data-action="abrir-etapa" data-id="' + esc(tk.pedido.id) + '" data-idx="' + tk.etapaIdx + '">' +
-          '<span class="fila-titulo">' + esc(tk.etapa.nombre) + '</span>' +
-          '<span class="fila-sub">' + esc(t.linea) + (tk.esActual ? '' : ' · <em>aún no le toca</em>') + '</span></button>' +
-          (esteEnMarcha
-            ? '<button type="button" class="btn btn-parar" data-action="parar-tiempo">' + ui().icono('stop') + 'Parar</button>'
-            : '<button type="button" class="btn btn-primario" data-action="iniciar-tiempo" data-id="' + esc(tk.pedido.id) + '" data-idx="' + tk.etapaIdx + '">' + ui().icono('play') + 'Iniciar</button>') +
-          '</div>';
-      }).join('');
-    }
-    return html + '</section>';
-  }
-
   App.views = App.views || {};
 
   App.views.panel = function renderPanel() {
-    const u = App.auth.current();
     const hoy = todayISO();
     const activos = App.pedidos.activos();
     const terminados = App.pedidos.terminados();
@@ -58,8 +32,6 @@
     const horasSemana = App.tiempos.ultimosDias(7);
 
     let html = '';
-    if (u.rol === 'operario') html += misTareas(u);
-
     html += '<div class="kpis">' +
       ui().kpi(activos.length, 'Pedidos en curso') +
       ui().kpi(esteMes, 'Terminados este mes') +
@@ -69,13 +41,14 @@
       ui().kpi(formatDuracion(horasSemana), 'Imputado últimos 7 días') +
       '</div>';
 
-    const bajos = App.auth.can('stock.ver') ? App.catalogo.materialesBajos() : [];
-    if (bajos.length) {
-      html += '<section class="seccion"><h2 class="seccion-titulo">Materiales con stock bajo</h2>' + bajos.map(m =>
+    // Material gastado pendiente de cuadrar en el inventario de la otra app.
+    const conGasto = App.consumos.materialesConGasto();
+    if (conGasto.length) {
+      html += '<section class="seccion"><h2 class="seccion-titulo">Material gastado sin poner a 0</h2>' + conGasto.slice(0, 6).map(m =>
         '<button type="button" class="fila fila-boton" data-action="ir-material" data-id="' + esc(m.id) + '"><span class="fila-principal">' +
-        '<span class="fila-titulo">' + esc(m.nombre) + '</span>' +
-        '<span class="fila-sub">' + (m.stockMinimo !== null && m.stockMinimo !== undefined ? 'Mínimo ' + formatNumber(m.stockMinimo) + ' ' + esc(m.unidad) : 'Sin mínimo definido') + '</span></span>' +
-        ui().chip(formatNumber(App.catalogo.materialDisponible(m)) + ' ' + esc(m.unidad) + ' disp.', 'alerta') + '</button>').join('') + '</section>';
+        '<span class="fila-titulo">' + esc(m.nombre) + '</span></span>' +
+        ui().chip('−' + formatNumber(App.consumos.gastado(m.id)) + ' ' + esc(m.unidad)) + '</button>').join('') +
+        (conGasto.length > 6 ? '<p class="ayuda">Y ' + (conGasto.length - 6) + ' más en Catálogo → Materiales.</p>' : '') + '</section>';
     }
 
     if (!App.repo.all('pedidos').length) {

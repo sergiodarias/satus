@@ -15,7 +15,7 @@
 (function (App) {
   'use strict';
 
-  const { esc, DomainError, parseNum } = App.util;
+  const { esc, DomainError } = App.util;
   const ui = App.ui;
 
   /* ---------------------------- Estado de interfaz ------------------------- */
@@ -28,21 +28,24 @@
     vistaCatalogo: 'productos',
     productoAbierto: null,
     busquedaClientes: '',
+    busquedaMateriales: '',
     filtroIncidencias: 'abiertas',
     errorGuardado: null,
     cargando: null
   };
   const S = ui.state;
 
+  // El operario no ve el Panel: entra directo a sus órdenes de fabricación («Mis OF»).
   const PESTANAS = [
-    { id: 'panel', etiqueta: 'Panel', icono: 'panel' },
-    { id: 'pedidos', etiqueta: 'Pedidos', icono: 'pedidos' },
+    { id: 'panel', etiqueta: 'Panel', icono: 'panel', permiso: 'panel.ver' },
+    { id: 'pedidos', etiqueta: () => App.auth.can('pedido.verTodos') ? 'Pedidos' : 'Mis OF', icono: 'pedidos' },
     { id: 'incidencias', etiqueta: 'Incidencias', icono: 'incidencias' },
     { id: 'catalogo', etiqueta: 'Catálogo', icono: 'catalogo', permiso: 'catalogo.ver' },
     { id: 'clientes', etiqueta: 'Clientes', icono: 'clientes', permiso: 'cliente.ver' }
   ];
   /** Pestañas que el usuario actual puede ver. */
   function pestanasVisibles() { return PESTANAS.filter(p => !p.permiso || App.auth.can(p.permiso)); }
+  function pestanaInicial() { const v = pestanasVisibles(); return v.length ? v[0].id : 'pedidos'; }
 
   /* -------------------------------- Pintado -------------------------------- */
 
@@ -62,7 +65,7 @@
     const enCurso = App.pedidos.activos().length;
     const contadores = { pedidos: enCurso, incidencias: abiertas };
     const visibles = pestanasVisibles();
-    if (!visibles.some(p => p.id === S.pestana)) S.pestana = 'panel';
+    if (!visibles.some(p => p.id === S.pestana)) S.pestana = pestanaInicial();
 
     app.innerHTML =
       '<header class="cabecera"><div class="cabecera-interior">' +
@@ -73,7 +76,7 @@
       (S.errorGuardado ? '<div class="banner-error" role="alert">' + esc(S.errorGuardado) + ' <button type="button" class="enlace" data-action="cerrar-error">Entendido</button></div>' : '') +
       '<nav class="pestanas" aria-label="Secciones"><div class="pestanas-interior" style="grid-template-columns:repeat(' + visibles.length + ',1fr)">' + visibles.map(p =>
         '<button type="button" class="pestana' + (S.pestana === p.id ? ' activa' : '') + '" data-action="pestana" data-valor="' + p.id + '"' + (S.pestana === p.id ? ' aria-current="page"' : '') + '>' +
-        ui.icono(p.icono) + '<span class="pestana-texto">' + p.etiqueta + '</span>' +
+        ui.icono(p.icono) + '<span class="pestana-texto">' + (typeof p.etiqueta === 'function' ? p.etiqueta() : p.etiqueta) + '</span>' +
         (contadores[p.id] ? '<span class="pestana-contador' + (p.id === 'incidencias' ? ' contador-alerta' : '') + '">' + contadores[p.id] + '</span>' : '') +
         '</button>').join('') + '</div></nav>' +
       '<main class="contenido" id="contenido">' + App.views[S.pestana]() + '</main>';
@@ -137,7 +140,7 @@
     // Navegación
     'pestana': d => { S.pestana = d.valor; pintar(); window.scrollTo(0, 0); },
     'ir-pedido': d => { ui.cerrarHoja(); S.pestana = 'pedidos'; S.filtroPedidos = 'todos'; S.busquedaPedidos = ''; S.pedidoAbierto = d.id; pintar(); scrollA('pedido-' + d.id); },
-    'ir-material': d => { S.pestana = 'catalogo'; S.vistaCatalogo = 'materiales'; S.productoAbierto = d.id; pintar(); scrollA('producto-' + d.id); },
+    'ir-material': d => { S.pestana = 'catalogo'; S.vistaCatalogo = 'materiales'; S.busquedaMateriales = ''; S.productoAbierto = d.id; pintar(); scrollA('producto-' + d.id); },
     'filtro-pedidos': d => { S.filtroPedidos = d.valor; pintar(); },
     'filtro-incidencias': d => { S.filtroIncidencias = d.valor; pintar(); },
     'vista-catalogo': d => { S.vistaCatalogo = d.valor; S.productoAbierto = null; pintar(); },
@@ -149,14 +152,14 @@
     'dialogo-no': () => ui.cerrarDialogo(false),
 
     // Sesión
-    'entrar': d => { App.auth.login(d.id); S.pestana = 'panel'; pintar(); window.scrollTo(0, 0); },
+    'entrar': d => { App.auth.login(d.id); S.pestana = pestanaInicial(); pintar(); window.scrollTo(0, 0); },
     'recargar': () => recargar(true),
     'ajustes': () => ui.abrirHoja('ajustes'),
     'salir': async () => {
       ui.cerrarHoja();
       await App.auth.logout();
       if (App.auth.modoServidor()) App.repo.vaciar();
-      S.pedidoAbierto = null; S.productoAbierto = null; S.pestana = 'panel';
+      S.pedidoAbierto = null; S.productoAbierto = null; S.pestana = 'panel'; S.busquedaMateriales = '';
       pintar();
     },
 
@@ -165,15 +168,8 @@
     'editar-pedido': d => ui.abrirHoja('pedido', { id: d.id }),
     'alternar-etapa': d => ejecutar(() => App.pedidos.alternarEtapa(d.id, Number(d.idx))),
     'abrir-etapa': d => ui.abrirHoja('etapa', { pedidoId: d.id, idx: Number(d.idx) }),
-    'despachar': async d => {
-      const faltan = App.pedidos.faltantesAlDespachar(d.id);
-      const ok = await ui.confirmar(faltan.length
-        ? { titulo: 'Stock real insuficiente', texto: 'Faltaría: ' + faltan.join(', ') + '. ¿Despachar igualmente?', ok: 'Despachar igualmente', peligro: true }
-        : { titulo: '¿Despachar materiales?', texto: 'Se descontarán del stock real. Hazlo cuando empiece la fabricación.', ok: 'Despachar' });
-      if (ok) ejecutar(() => App.pedidos.despachar(d.id), 'Materiales despachados');
-    },
     'eliminar-pedido': async d => {
-      const ok = await ui.confirmar({ titulo: '¿Eliminar este pedido?', texto: 'También se borran sus tiempos e incidencias. Si ya se despacharon materiales, vuelven al stock. No se puede deshacer.', ok: 'Eliminar', peligro: true });
+      const ok = await ui.confirmar({ titulo: '¿Eliminar este pedido?', texto: 'También se borran sus tiempos, el material apuntado y sus incidencias. No se puede deshacer.', ok: 'Eliminar', peligro: true });
       if (ok) ejecutar(() => { App.pedidos.eliminar(d.id); S.pedidoAbierto = null; }, 'Pedido eliminado');
     },
 
@@ -184,6 +180,25 @@
     'borrar-tiempo': async d => {
       const ok = await ui.confirmar({ titulo: '¿Borrar este registro de tiempo?', ok: 'Borrar', peligro: true });
       if (ok) ejecutar(() => App.tiempos.eliminar(d.id), 'Registro borrado');
+    },
+
+    // Material consumido
+    'borrar-consumo': async d => {
+      const ok = await ui.confirmar({ titulo: '¿Borrar esta línea de material?', ok: 'Borrar', peligro: true });
+      if (ok) ejecutar(() => App.consumos.eliminar(d.id), 'Línea borrada');
+    },
+    'poner0-material': async d => {
+      const m = App.repo.get('productos', d.id);
+      if (!m) return;
+      const cant = App.consumos.gastado(m.id);
+      const ok = await ui.confirmar({ titulo: '¿Poner a 0 «' + m.nombre + '»?', texto: 'Hazlo cuando ya hayas descontado ' + App.util.formatNumber(cant) + ' ' + m.unidad + ' en el inventario de la otra app. Queda guardado como movimiento y los pedidos conservan lo que gastaron.', ok: 'Poner a 0' });
+      if (ok) ejecutar(() => App.consumos.poner0([m.id]), m.nombre + ' a 0');
+    },
+    'poner0-todo': async () => {
+      const mats = App.consumos.materialesConGasto();
+      if (!mats.length) return;
+      const ok = await ui.confirmar({ titulo: '¿Poner todos los materiales a 0?', texto: 'Hazlo cuando hayas cuadrado el inventario real en la otra app. ' + App.util.plural(mats.length, 'material', 'materiales') + ' con gasto: ' + mats.map(m => m.nombre).join(', ') + '. Queda un movimiento por material y los pedidos conservan lo que gastaron.', ok: 'Poner todo a 0' });
+      if (ok) ejecutar(() => App.consumos.poner0(mats.map(m => m.id)), r => App.util.plural(r.length, 'material puesto', 'materiales puestos') + ' a 0');
     },
 
     // Incidencias
@@ -215,14 +230,9 @@
     'ruta-subir': (d, el) => { const li = el.closest('li'); if (li.previousElementSibling) li.parentNode.insertBefore(li, li.previousElementSibling); },
     'ruta-bajar': (d, el) => { const li = el.closest('li'); if (li.nextElementSibling) li.parentNode.insertBefore(li.nextElementSibling, li); },
     'ruta-plantilla': async () => {
-      const ok = await ui.confirmar({ titulo: '¿Usar la plantilla habitual?', texto: 'Sustituye las etapas escritas por las 12 etapas estándar.', ok: 'Sustituir' });
+      const ok = await ui.confirmar({ titulo: '¿Usar la ruta base?', texto: 'Sustituye las etapas escritas por las ' + App.config.DEFAULT_ROUTE.length + ' etapas de la ruta base.', ok: 'Sustituir' });
       if (ok) document.getElementById('editor-ruta').innerHTML = App.config.DEFAULT_ROUTE.map(App.views.filaRuta).join('');
     },
-    'receta-anadir': () => {
-      const mats = App.catalogo.materiales();
-      document.getElementById('editor-receta').insertAdjacentHTML('beforeend', App.views.filaReceta({ materialId: mats[0] ? mats[0].id : '', cantidad: '' }));
-    },
-    'receta-quitar': (d, el) => el.closest('li').remove(),
 
     // Clientes
     'nuevo-cliente': () => ui.abrirHoja('cliente', {}),
@@ -277,19 +287,13 @@
         aviso.textContent = e.message || String(e);
         return;
       }
-      S.pestana = 'panel';
+      S.pestana = pestanaInicial();
       pintar();
     },
-    'pedido': async (form) => {
+    'pedido': (form) => {
       const d = datos(form);
       const id = form.dataset.id;
-      if (!id) {
-        const faltan = App.pedidos.faltantesAlReservar(d.productoId, parseNum(d.cantidad) || 0);
-        if (faltan.length) {
-          const ok = await ui.confirmar({ titulo: 'Material insuficiente', texto: 'Faltaría: ' + faltan.join(', ') + '. ¿Reservar igualmente?', ok: 'Crear pedido' });
-          if (!ok) return;
-        }
-      }
+      if (!id) d.asignados = new FormData(form).getAll('asignados');
       const r = ejecutar(() => id ? App.pedidos.editar(id, d) : App.pedidos.crear(d), id ? 'Pedido actualizado' : 'Pedido creado');
       if (r) { ui.cerrarHoja(); S.pedidoAbierto = r.id; if (!id) { S.pestana = 'pedidos'; S.filtroPedidos = 'activos'; } pintar(); scrollA('pedido-' + r.id); }
     },
@@ -300,6 +304,15 @@
       // La hoja se ha vuelto a pintar: vaciar el formulario nuevo, no el viejo.
       if (r) { const f = document.querySelector('form[data-form="tiempo-manual"]'); if (f) f.reset(); }
     },
+    'consumo': (form) => {
+      const d = datos(form);
+      d.pedidoId = form.dataset.pedido; d.etapaIdx = form.dataset.idx;
+      const r = ejecutar(() => App.consumos.registrar(d), r => {
+        const m = App.repo.get('productos', r.materialId);
+        return 'Apuntado: ' + App.util.formatNumber(r.cantidad) + ' ' + (m ? m.unidad + ' de ' + m.nombre : '');
+      });
+      if (r) { const c = document.getElementById('co-cantidad'); if (c) c.focus(); }
+    },
     'incidencia': (form) => {
       const r = ejecutar(() => App.incidencias.crear(datos(form)), x => x.tipo === 'nota' ? 'Nota guardada' : 'Incidencia registrada');
       if (r) { ui.cerrarHoja(); pintar(); }
@@ -308,8 +321,6 @@
       const fd = new FormData(form);
       const d = datos(form);
       d.ruta = fd.getAll('ruta');
-      const mats = fd.getAll('recetaMaterial'), cants = fd.getAll('recetaCantidad');
-      d.receta = mats.map((m, i) => ({ materialId: m, cantidad: cants[i] }));
       const r = ejecutar(() => App.catalogo.guardarProducto(d, form.dataset.id || null), 'Producto guardado');
       if (r) { ui.cerrarHoja(); S.vistaCatalogo = 'productos'; S.productoAbierto = r.id; pintar(); }
     },
@@ -317,9 +328,6 @@
       const r = ejecutar(() => App.catalogo.guardarMaterial(datos(form), form.dataset.id || null), 'Material guardado');
       if (r) { ui.cerrarHoja(); S.vistaCatalogo = 'materiales'; S.productoAbierto = r.id; pintar(); }
     },
-    'ajuste-stock': (form) => {
-      const d = datos(form);
-      ejecutar(() => App.catalogo.ajustarStock(form.dataset.id, d.tipo, d.cantidad, d.nota), 'Stock actualizado');    },
     'cliente': (form) => {
       const r = ejecutar(() => App.catalogo.guardarCliente(datos(form), form.dataset.id || null), 'Cliente guardado');
       if (r) { ui.cerrarHoja(); pintar(); }
@@ -344,8 +352,13 @@
       const g = document.getElementById('campo-gravedad');
       if (g) g.hidden = el.value === 'nota';
     },
-    'asignar-etapa': (el) => ejecutar(() => App.pedidos.asignarEtapa(el.dataset.id, Number(el.dataset.idx), el.value),
-      () => el.value ? 'Asignada a ' + App.auth.nombreDe(el.value) : 'Sin asignar'),
+    'asignar-of': (el) => {
+      const r = ejecutar(() => App.pedidos.alternarAsignado(el.dataset.id, el.value, el.checked),
+        () => (el.checked ? 'Asignada a ' : 'Quitada a ') + App.auth.nombreDe(el.value));
+      if (!r) el.checked = !el.checked;
+    },
+    // Si no se puede (p. ej. «No» con líneas apuntadas), se repinta para volver a la opción real.
+    'consumo-etapa': (el) => { if (ejecutar(() => App.consumos.marcarEtapa(el.dataset.id, Number(el.dataset.idx), el.value)) === undefined) pintar(); },
     'importar': (el) => {
       const f = el.files && el.files[0];
       if (!f) return;
@@ -381,6 +394,7 @@
 
   const ENTRADAS = {
     'buscar-pedidos': (el) => { S.busquedaPedidos = el.value; document.getElementById('lista-pedidos').innerHTML = App.views.pedidosLista(); },
+    'buscar-materiales': (el) => { S.busquedaMateriales = el.value; document.getElementById('lista-materiales').innerHTML = App.views.materialesLista(); },
     'buscar-clientes': (el) => { S.busquedaClientes = el.value; document.getElementById('lista-clientes').innerHTML = App.views.clientesLista(); }
   };
 

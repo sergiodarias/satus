@@ -122,8 +122,20 @@
       if (!rol) return false;
       const p = rol.permisos;
       if (p.includes('*') || p.includes(accion)) return true;
-      if (p.includes(accion + ':propio')) return !!registro && registro.usuarioId === actual.id;
+      if (p.includes(accion + ':propio') && !!registro && registro.usuarioId === actual.id) return true;
+      if (p.includes(accion + ':asignado')) return this.asignado(registro);
       return false;
+    },
+
+    /**
+     * ¿Está el usuario actual asignado a esta OF? Acepta el pedido o un
+     * registro que apunte a él (tiempo, consumo, incidencia: pedidoId).
+     */
+    asignado(registro) {
+      if (!actual || !registro) return false;
+      const ped = Array.isArray(registro.asignados) ? registro
+        : (registro.pedidoId && App.repo ? App.repo.get('pedidos', registro.pedidoId) : null);
+      return !!ped && Array.isArray(ped.asignados) && ped.asignados.includes(actual.id);
     },
 
     /** Igual que can(), pero lanza un error legible si no hay permiso. */
